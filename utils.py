@@ -35,20 +35,15 @@ def parse_time(value) -> Optional[float]:
         # Some objects may raise in isna, ignore and continue
         pass
 
-    # pandas Timestamp / datetime-like
+    # datetime-like (Timestamp / datetime / time)
     try:
-        if pd.api.types.is_datetime64_any_dtype(type(value)) or hasattr(value, "hour"):
-            # For pandas.Timestamp or datetime.time/datetime
-            try:
-                h = int(value.hour)
-                m = int(getattr(value, "minute", 0) or 0)
-                s_sec = int(getattr(value, "second", 0) or 0)
-                return h + m / 60 + s_sec / 3600
-            except Exception:
-                # fallthrough to string parsing
-                pass
+        if hasattr(value, "hour"):
+            h = int(value.hour)
+            m = int(getattr(value, "minute", 0) or 0)
+            s_sec = int(getattr(value, "second", 0) or 0)
+            return h + m / 60 + s_sec / 3600
     except Exception:
-        # if pandas api check fails for the type, continue
+        # fallthrough do parsowania tekstowego
         pass
 
     # Excel float (np. 0.25 = 6:00)
@@ -272,6 +267,7 @@ def extract_train_paths(
     df: pd.DataFrame,
     stations: List[Tuple[float, str, int]],
     train_columns: Dict[str, int],
+    debug: bool = False,
 ) -> Dict[str, List[Tuple[float, float, str]]]:
     """
     Return {train_number: [(time_decimal, km, station_name), ...]}.
@@ -279,29 +275,33 @@ def extract_train_paths(
     """
     paths: Dict[str, List[Tuple[float, float, str]]] = {}
 
+    def dbg(msg: str) -> None:
+        if debug:
+            print(msg)
+
     for train_nr, col in train_columns.items():
         points: List[Tuple[float, float, str]] = []
         base_time: Optional[float] = None
-        print(f"\nProcessing train {train_nr}")  # Debug print
+        dbg(f"\nProcessing train {train_nr}")
 
         for km, station, r in stations:
             val = df.iat[r, col]
             t = parse_time(val)
             if t is not None:
-                print(f"Station: {station}, Raw time: {val}, Parsed time: {t}")  # Debug print
+                dbg(f"Station: {station}, Raw time: {val}, Parsed time: {t}")
                 if base_time is None:
                     # pierwszy czas wyznacza bazę
                     base_time = t
                     adj_time = t
-                    print(f"Setting base time to: {base_time}")  # Debug print
+                    dbg(f"Setting base time to: {base_time}")
                 else:
                     # jeżeli czas jest mniejszy od bazy, dodaj 24h
                     if t < base_time and (base_time - t) > 12:
                         adj_time = t + 24
-                        print(f"Time {t} < base {base_time}, adding 24h -> {adj_time}")  # Debug print
+                        dbg(f"Time {t} < base {base_time}, adding 24h -> {adj_time}")
                     else:
                         adj_time = t
-                        print(f"Using time as is: {t}")  # Debug print
+                        dbg(f"Using time as is: {t}")
 
                 points.append((adj_time, km, station))
 

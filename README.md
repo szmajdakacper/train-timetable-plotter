@@ -10,7 +10,8 @@ Interactive visualization tool for train timetables that allows you to:
 
 - 📈 Interactive plot with train paths
 - 📊 Detailed timetable view for each sheet
-- 🔍 Train highlighting for easy analysis
+- 🔍 Train highlighting for easy analysis (klik nagłówka kolumny pociągu)
+- 🪵 Debug mode toggle in sidebar
 - 📱 Responsive design that works on all devices
 
 ## Installation
@@ -57,13 +58,18 @@ streamlit run app.py
 ## Input File Format
 
 The Excel file should be structured as follows:
-- Station names in a column (with header "Station" or similar)
-- Kilometer points in a column (with header "km" or similar)
-- Train numbers as column headers
-- Time values in HH:MM format
+- Polish headers are expected:
+  - "Numer pociągu" (header row with train numbers)
+  - "ze stacji" and "do stacji" (mark the start and end of station list)
+  - "km" (kilometre column)
+- The first sheet serves as the reference list of stations and km; other sheets must use the same stations
+- Time values: HH:MM, HH:MM:SS, HH.MM (minutes), or Excel fraction of day (e.g., 0.25)
 - Multiple sheets allowed for different lines/directions
 
 ## Contributing
+## Debugging
+
+Enable "Tryb debug" in the sidebar to print additional logs to the server console. This helps diagnose time parsing and column mapping issues.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
