@@ -1,11 +1,20 @@
 import pandas as pd
 from typing import Dict, Optional, Tuple, List
+import unicodedata
 
 # ===================== Helpers =====================
 
 def normalize(s: str) -> str:
-    """Normalize text for header comparison."""
-    return str(s).strip().lower()
+    """Normalize text for header comparison (casefold, collapse spaces, strip accents)."""
+    if s is None:
+        return ""
+    text = str(s).replace("\xa0", " ").strip().lower()
+    # collapse internal whitespace
+    text = " ".join(text.split())
+    # strip accents
+    text_nfkd = unicodedata.normalize("NFKD", text)
+    text_no_accents = "".join(ch for ch in text_nfkd if not unicodedata.combining(ch))
+    return text_no_accents
 
 def parse_km(value) -> Optional[float]:
     """Safe parsing of km (handles , and .)."""
@@ -109,17 +118,41 @@ def find_headers(df: pd.DataFrame) -> Dict[str, Optional[int]]:
     )
     rows, cols = df.shape
 
+    # Accept common variants (normalized and without trailing colon)
+    TRAIN_HEADER_VARIANTS = {
+        "numer pociagu",
+        "nr pociagu",
+        "pociag",
+        "train number",
+    }
+    KM_HEADER_VARIANTS = {
+        "km",
+        "kilometraz",
+        "kilometr",
+    }
+    STATION_START_VARIANTS = {
+        "ze stacji",
+        "od stacji",
+        "start stacji",
+    }
+    STATION_END_VARIANTS = {
+        "do stacji",
+        "na stacje",
+        "cel stacji",
+        "koniec stacji",
+    }
+
     for r in range(rows):
         for c in range(cols):
-            v = normalize(df.iat[r, c])
-            if v == "numer pociągu":
+            v = normalize(df.iat[r, c]).rstrip(":")
+            if v in TRAIN_HEADER_VARIANTS:
                 pos["train_row"] = r
-            elif v == "km":
+            elif v in KM_HEADER_VARIANTS:
                 pos["km_col"] = c
-            elif v == "ze stacji":
+            elif v in STATION_START_VARIANTS:
                 pos["station_start_row"] = r
                 pos["station_col"] = c
-            elif v == "do stacji":
+            elif v in STATION_END_VARIANTS:
                 pos["station_end_row"] = r
 
     return pos
