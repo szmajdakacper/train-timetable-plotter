@@ -233,13 +233,22 @@ def extract_train_columns(
             c += 1
             continue
 
-        s = str(v).strip()
+        s_raw = str(v).strip()
+        s_norm = normalize(s_raw)
         # candidate if contains any digit
-        if any(ch.isdigit() for ch in s):
-            # detect merged span: subsequent header cells that are NaN are considered part of the span
+        if any(ch.isdigit() for ch in s_raw):
+            # detect span: originally-merged (NaN followers) OR contiguous identical headers after unmerge
             span_end = c
-            while span_end + 1 < ncols and pd.isna(df.iat[train_row, span_end + 1]):
-                span_end += 1
+            while span_end + 1 < ncols:
+                next_val = df.iat[train_row, span_end + 1]
+                if pd.isna(next_val):
+                    span_end += 1
+                    continue
+                next_norm = normalize(str(next_val).strip())
+                if next_norm == s_norm and next_norm != "":
+                    span_end += 1
+                    continue
+                break
 
             # columns that belong to this header span
             cols_in_span = list(range(c, span_end + 1))
@@ -270,14 +279,14 @@ def extract_train_columns(
                         # fallback to original heuristic c+1 (if in bounds)
                         time_col = c + 1 if c + 1 < ncols else c
 
-                key = unique_key(s)
+                key = unique_key(s_raw)
                 mapping[key] = time_col
             else:
                 # merged header — inspect each column in the span and add those that contain times
                 added_any = False
                 for j in cols_in_span:
                     if column_has_time(j):
-                        key = unique_key(s)
+                        key = unique_key(s_raw)
                         mapping[key] = j
                         added_any = True
 
@@ -286,7 +295,7 @@ def extract_train_columns(
                 if not added_any:
                     for j in cols_in_span:
                         time_col = j + 1 if j + 1 < ncols else j
-                        key = unique_key(s)
+                        key = unique_key(s_raw)
                         mapping[key] = time_col
 
             # jump to column after span
