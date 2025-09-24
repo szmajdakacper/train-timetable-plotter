@@ -3,7 +3,7 @@ import datetime as dt
 import hashlib
 
 from excel_loader import read_and_store_in_session
-from table_editor import save_cell_time, clear_cell_time
+from table_editor import save_cell_time, clear_cell_time, propagate_time_shift
 from utils import parse_time
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
@@ -55,10 +55,6 @@ if station_map and sheets_data:
     # Zbuduj kolumny pociągów (tylko z wybranego arkusza)
     train_numbers = [str(t["train_number"]) for t in trains_active]
     unique_trains = sorted(set(train_numbers), key=lambda x: (''.join(ch for ch in x if ch.isdigit()) == "", x))
-    try:
-        print("DBG unique_trains:", unique_trains)
-    except Exception:
-        pass
 
     # Wiersze bazujemy na mapie stacji z wybranego arkusza, posortowane po km rosnąco
     station_maps = st.session_state.get("station_maps", {})
@@ -83,11 +79,6 @@ if station_map and sheets_data:
         table_rows.append(row)
 
     df_view = pd.DataFrame(table_rows)
-    try:
-        print("DBG df_view shape:", df_view.shape)
-        print("DBG df_view columns:", df_view.columns.tolist())
-    except Exception:
-        pass
     st.subheader("Tabela: km – stacja – pociągi")
     st.caption(f"Arkusz: {selected_sheet}")
 
@@ -157,10 +148,6 @@ if station_map and sheets_data:
 
         # Ustal domyślną godzinę z danych
         current_time_str = cell_map.get((station_clicked, float(km_clicked)), {}).get(col_id, "")
-        try:
-            print("DBG dblclick col=", col_id, "station=", station_clicked, "km=", km_clicked, "current=", current_time_str)
-        except Exception:
-            pass
         parsed = parse_time(current_time_str) if current_time_str else None
         default_time = dt.time(int(parsed) % 24, int(round((parsed % 1) * 60))) if parsed is not None else dt.time(0, 0)
 
@@ -170,40 +157,32 @@ if station_map and sheets_data:
             def time_dialog():
                 st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                 t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"dlg_time_{selected_sheet}")
+                # Checkbox propagacji tylko jeśli istniała poprzednia wartość czasu (mamy parsed)
+                allow_propagate = parsed is not None
+                prop = st.checkbox("Uwzględnij zmianę na dalszej części trasy", value=False, disabled=not allow_propagate, key=f"dlg_prop_{selected_sheet}")
                 c1, c2, c3 = st.columns([1,1,1])
                 with c1:
                     if st.button("Zapisz", type="primary", key=f"dlg_save_{selected_sheet}"):
-                        try:
-                            print("DBG save clicked: col=", col_id, "station=", station_clicked, "km=", km_clicked, "time=", t)
-                        except Exception:
-                            pass
+                        # Oblicz delta względem poprzedniej wartości jeśli propagacja aktywna
+                        if prop and parsed is not None:
+                            new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
+                            delta_hours = new_dec - float(parsed)
+                        else:
+                            delta_hours = 0.0
+
                         save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state)
+                        if prop and delta_hours != 0.0:
+                            propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                         st.session_state[grid_nonce_key] += 1
-                        try:
-                            print("DBG nonce after save:", st.session_state[grid_nonce_key])
-                        except Exception:
-                            pass
                         st.rerun()
                 with c2:
-                    if st.button("Wyczyść", key=f"dlg_clear_{selected_sheet}"):
-                        try:
-                            print("DBG clear clicked: col=", col_id, "station=", station_clicked, "km=", km_clicked)
-                        except Exception:
-                            pass
+                    if st.button("Usuń postój", key=f"dlg_clear_{selected_sheet}"):
                         clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
                         st.session_state[grid_nonce_key] += 1
-                        try:
-                            print("DBG nonce after clear:", st.session_state[grid_nonce_key])
-                        except Exception:
-                            pass
                         st.rerun()
                 with c3:
                     if st.button("Cofnij", key=f"dlg_cancel_{selected_sheet}"):
                         st.session_state[grid_nonce_key] += 1
-                        try:
-                            print("DBG cancel clicked; nonce:", st.session_state[grid_nonce_key])
-                        except Exception:
-                            pass
                         st.rerun()
 
             time_dialog()
@@ -219,7 +198,7 @@ if station_map and sheets_data:
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()
                 with c2:
-                    if st.button("Wyczyść", key=f"fallback_clear_{selected_sheet}"):
+                    if st.button("Usuń postój", key=f"fallback_clear_{selected_sheet}"):
                         clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()

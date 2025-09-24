@@ -147,11 +147,7 @@ def save_cell_time(
     decimal = h + m / 60 + s / 3600
     canonical = format_time_decimal(float(decimal))
 
-    try:
-        print("DBG save_cell_time key:", key)
-        print("DBG trains_list size (before):", len(trains_list))
-    except Exception:
-        pass
+    # (debug usunięty)
 
     found_index = None
     for idx, r in enumerate(trains_list):
@@ -170,10 +166,6 @@ def save_cell_time(
             "time_decimal": float(decimal),
         }
         trains_list.append(updated_rec)
-        try:
-            print("DBG save_cell_time appended new record for:", key)
-        except Exception:
-            pass
     else:
         # Przenieś zaktualizowany rekord na koniec i usuń pozostałe duplikaty tego klucza
         try:
@@ -188,10 +180,7 @@ def save_cell_time(
         base.append(updated_rec)
         trains_list[:] = base
 
-    try:
-        print("DBG trains_list size (after):", len(trains_list))
-    except Exception:
-        pass
+    # (debug usunięty)
 
     active["trains"] = trains_list
     for i, s in enumerate(sheets_data):
@@ -222,6 +211,48 @@ def clear_cell_time(
 
     new_list = [r for r in trains_list if rec_key(r) != key]
     active["trains"] = new_list
+    for i, s in enumerate(sheets_data):
+        if s.get("sheet") == selected_sheet:
+            sheets_data[i] = active
+            break
+    session_state["sheets_data"] = sheets_data
+
+
+def propagate_time_shift(
+    selected_sheet: str,
+    train_number: str,
+    from_km: float,
+    delta_hours: float,
+    session_state: Any,
+) -> None:
+    """Propagate a time shift to later stations (km > from_km) for the given train.
+
+    Only adjusts records that already have a time. Handles day crossing via decimal hours
+    (format_time_decimal will render (+d) if needed).
+    """
+    sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
+    active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
+    if active is None:
+        return
+    trains_list: List[Dict[str, any]] = active.get("trains", [])
+
+    for rec in trains_list:
+        if str(rec.get("train_number")) != str(train_number):
+            continue
+        km_val = float(rec.get("km", 0.0))
+        if km_val <= float(from_km):
+            continue
+        t_dec = rec.get("time_decimal")
+        if t_dec is None:
+            continue
+        try:
+            new_dec = float(t_dec) + float(delta_hours)
+        except Exception:
+            continue
+        rec["time_decimal"] = new_dec
+        rec["time"] = format_time_decimal(new_dec)
+
+    active["trains"] = trains_list
     for i, s in enumerate(sheets_data):
         if s.get("sheet") == selected_sheet:
             sheets_data[i] = active
