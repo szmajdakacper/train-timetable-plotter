@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 import io
 
 from utils import (
@@ -61,7 +61,6 @@ if uploaded_file:
 
     # Create reference station to km mapping
     station_to_km = {station: km for km, station, _ in reference_stations}
-    all_paths = {}
     sheet_tables = []  # list of (sheet_name, DataFrame)
 
     for sheet in sheet_names:
@@ -98,19 +97,6 @@ if uploaded_file:
             station_end_row=pos.get("station_end_row"),
         )
 
-        # Use reference km values when creating paths
-        try:
-            paths = extract_train_paths(
-                df,
-                [(station_to_km[s], s, r) for _, s, r in stations],
-                train_columns,
-                debug=debug,
-            )
-        except Exception as e:
-            st.error(f"Błąd podczas ekstrakcji ścieżek w arkuszu '{sheet}': {e}")
-            continue
-        all_paths.update(paths)
-
         # Build table for this sheet
         table_data = []
         for km, station, row in stations:
@@ -130,7 +116,108 @@ if uploaded_file:
         sheet_table = pd.DataFrame(table_data)
         sheet_tables.append((sheet, sheet_table))
 
-    # Build interactive chart
+    # Initialize or update editable tables in session state
+    if "tables_by_sheet" not in st.session_state:
+        st.session_state.tables_by_sheet = {name: table.copy() for name, table in sheet_tables}
+    else:
+        # ensure all sheets exist in state (new upload or new sheet names)
+        for name, table in sheet_tables:
+            if name not in st.session_state.tables_by_sheet:
+                st.session_state.tables_by_sheet[name] = table.copy()
+
+    # Helper: build paths from edited tables
+    def build_paths_from_tables(tables_dict):
+        combined = {}
+        for name, table in tables_dict.items():
+            if table is None or table.empty:
+                continue
+            # Identify train columns
+            train_cols = [c for c in table.columns if c not in ("km", "station")]
+            for train_nr in train_cols:
+                points = []
+                base_time = None
+                for _, rec in table.iterrows():
+                    station_name = rec.get("station")
+                    val = rec.get(train_nr)
+                    if pd.isna(station_name):
+                        continue
+                    # Y: korzystaj zawsze z mapy referencyjnej, nie z edytowanej kolumny 'km'
+                    km_val = station_to_km.get(str(station_name))
+                    if km_val is None:
+                        # pomiń wiersze ze stacjami spoza referencji
+                        continue
+                    t = parse_time(val)
+                    if t is None:
+                        continue
+                    if base_time is None:
+                        base_time = t
+                        adj = t
+                    else:
+                        if t < base_time and (base_time - t) > 12:
+                            adj = t + 24
+                        else:
+                            adj = t
+                        if t > base_time and (t - base_time) > 12:
+                            base_time = t
+                    points.append((adj, km_val, station_name))
+                if points:
+                    combined[train_nr] = points
+        return combined
+
+    # Render tables first (editable) and persist changes, so the plot uses fresh data in the same rerun
+    if sheet_tables:
+        tabs = st.tabs([f"Arkusz: {name}" for name, _ in sheet_tables])
+        for (sheet_name, orig_table), tab in zip(sheet_tables, tabs):
+            with tab:
+                table = st.session_state.tables_by_sheet.get(sheet_name, orig_table)
+                gb = GridOptionsBuilder.from_dataframe(table)
+                gb.configure_default_column(resizable=True, filter=False, sortable=False)
+
+                if "km" in table.columns:
+                    gb.configure_column("km", header_name="km", type=["numericColumn"], width=90)
+                if "station" in table.columns:
+                    gb.configure_column("station", header_name="stacja", width=200)
+
+                for col in table.columns:
+                    if col not in ("km", "station"):
+                        gb.configure_column(
+                            col,
+                            header_name=str(col),
+                            sortable=False,
+                            filter=False,
+                            suppressMenu=True,
+                            editable=True,
+                            headerTooltip=f"Edytuj czas (np. 06:35, 6.35, 0.25)",
+                        )
+
+                grid_options = gb.build()
+
+                grid_key = f"grid_{sheet_name}"
+                grid_response = AgGrid(
+                    table,
+                    gridOptions=grid_options,
+                    data_return_mode=DataReturnMode.AS_INPUT,
+                    update_mode=GridUpdateMode.VALUE_CHANGED,
+                    allow_unsafe_jscode=False,
+                    enable_enterprise_modules=False,
+                    fit_columns_on_grid_load=True,
+                    theme="streamlit",
+                    height=400,
+                    key=grid_key,
+                )
+
+                if isinstance(grid_response, dict) and grid_response.get("data") is not None:
+                    try:
+                        new_df = pd.DataFrame(grid_response["data"])  # type: ignore
+                        prev_df = st.session_state.tables_by_sheet.get(sheet_name, table)
+                        if not isinstance(prev_df, pd.DataFrame) or not new_df.equals(prev_df):
+                            st.session_state.tables_by_sheet[sheet_name] = new_df
+                            st.rerun()
+                    except Exception:
+                        pass
+
+    # Build interactive chart from current (possibly edited) tables
+    all_paths = build_paths_from_tables(st.session_state.tables_by_sheet)
     if all_paths:
         all_times = [t for pts in all_paths.values() for t, _, _ in pts]
         min_time = min(all_times) - 0.25
@@ -228,11 +315,13 @@ if uploaded_file:
             config={"displayModeBar": True, "responsive": True},
         )
 
-        # Show tables with AgGrid in tabs
+        # Show tables with AgGrid in tabs (editable time cells)
         if sheet_tables:
             tabs = st.tabs([f"Arkusz: {name}" for name, _ in sheet_tables])
-            for (sheet_name, table), tab in zip(sheet_tables, tabs):
+            for (sheet_name, orig_table), tab in zip(sheet_tables, tabs):
                 with tab:
+                    # Use edited table from session, fallback to original
+                    table = st.session_state.tables_by_sheet.get(sheet_name, orig_table)
                     gb = GridOptionsBuilder.from_dataframe(table)
                     gb.configure_default_column(resizable=True, filter=False, sortable=False)
 
@@ -241,7 +330,7 @@ if uploaded_file:
                     if "station" in table.columns:
                         gb.configure_column("station", header_name="stacja", width=200)
 
-                    # Kolumny pociągów jako zwykłe kolumny (brak sort-hacka)
+                    # Kolumny pociągów: włącz edycję czasu
                     for col in table.columns:
                         if col not in ("km", "station"):
                             gb.configure_column(
@@ -250,7 +339,8 @@ if uploaded_file:
                                 sortable=False,
                                 filter=False,
                                 suppressMenu=True,
-                                headerTooltip=f"Dane czasowe pociągu {col}",
+                                editable=True,
+                                headerTooltip=f"Edytuj czas (np. 06:35, 6.35, 0.25)",
                             )
 
                     grid_options = gb.build()
@@ -267,5 +357,13 @@ if uploaded_file:
                         height=400,
                         key=grid_key,
                     )
+
+                    # Zapisz zedytowaną tabelę do session_state (jeśli dostępna)
+                    if isinstance(grid_response, dict) and grid_response.get("data") is not None:
+                        try:
+                            st.session_state.tables_by_sheet[sheet_name] = pd.DataFrame(grid_response["data"])  # type: ignore
+                            # Po edycji Streamlit wykona rerun, a wykres zostanie odbudowany z nowych danych
+                        except Exception:
+                            pass
     else:
         st.info("Nie znaleziono ścieżek pociągów w przesłanym pliku.")
