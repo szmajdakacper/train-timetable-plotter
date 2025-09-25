@@ -58,6 +58,7 @@ class TrainPlot extends StreamlitComponentBase {
       showSymbol: true,
       symbolSize: 5,
       smooth: false,
+      // Każdy punkt może być tablicą [ms, km] lub obiektem { value:[ms, km], station, sheet, train }
       data: s.points,
       lineStyle: { color: "#000", width: 1.5 },
       itemStyle: { color: "#000" },
@@ -163,9 +164,44 @@ class TrainPlot extends StreamlitComponentBase {
 
     // wysokość ustawiana w lifecycle; brak wywołań w renderze
 
+    const onEvents = {
+      dblclick: (p: any) => {
+        try {
+          if (!p || p.componentType !== "series") return;
+          const raw = p.data;
+          const arr = Array.isArray(raw?.value) ? raw.value : (Array.isArray(raw) ? raw : p.value);
+          if (!Array.isArray(arr)) return;
+          const ms = arr[0];
+          const km = arr[1];
+          const train = (raw?.train ?? p.seriesName) || "";
+          const sheet = raw?.sheet;
+          const station = raw?.station;
+          // nearest station by km (fallback)
+          let stationName = station;
+          if (!stationName && Array.isArray(yStations) && yStations.length > 0) {
+            let best = yStations[0];
+            let bestDiff = Math.abs((yStations[0] as any).km - km);
+            for (let i = 1; i < yStations.length; i++) {
+              const diff = Math.abs((yStations[i] as any).km - km);
+              if (diff < bestDiff) { best = yStations[i] as any; bestDiff = diff; }
+            }
+            stationName = `${(best as any).name}`;
+          }
+          Streamlit.setComponentValue({
+            type: "pointDoubleClick",
+            train,
+            ms,
+            km,
+            station: stationName,
+            sheet,
+          });
+        } catch { /* noop */ }
+      }
+    } as any;
+
     return (
       <div style={{ width: "100%", height }}>
-        <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: "100%" }} />
+        <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: "100%" }} onEvents={onEvents} />
       </div>
     );
   };

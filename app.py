@@ -152,7 +152,12 @@ if station_map and sheets_data:
                     if parsed > base_time and (parsed - base_time) > 12:
                         base_time = parsed
                 ms = hours_to_ms(adj)
-                pts.append([ms, float(km_selected)])
+                pts.append({
+                    "value": [ms, float(km_selected)],
+                    "station": station_name,
+                    "train": tn,
+                    "sheet": sheet,
+                })
                 global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
                 global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
             if pts:
@@ -164,14 +169,78 @@ if station_map and sheets_data:
     x_min = max(0, (global_min_ms or 0) - pad)
     x_max = (global_max_ms or (24 * 3600 * 1000)) + pad
 
-    _ = train_plot(
+    # Nonce do resetu komponentu wykresu po akcji w modalu
+    plot_nonce_key = f"plot_nonce_{selected_sheet}"
+    if plot_nonce_key not in st.session_state:
+        st.session_state[plot_nonce_key] = 0
+
+    evt_plot = train_plot(
         y_stations=y_stations,
         series=series,
         x_min_ms=x_min,
         x_max_ms=x_max,
-        key=f"plot_{selected_sheet}",
+        key=f"plot_{selected_sheet}_{st.session_state[plot_nonce_key]}",
         height=420,
     )
+
+    # Obsługa dblclick z wykresu (edycja czasu w dowolnym arkuszu)
+    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointDoubleClick":
+        try:
+            col_id = str(evt_plot.get("train") or "")
+            station_clicked = str(evt_plot.get("station") or "")
+            km_clicked = float(evt_plot.get("km") or 0.0)
+            # arkusz może być None — wtedy użyj aktualnego
+            sheet_clicked = str(evt_plot.get("sheet") or selected_sheet)
+        except Exception:
+            col_id, station_clicked, km_clicked, sheet_clicked = "", "", 0.0, selected_sheet
+
+        # km dla propagacji i zapisu bierzemy z mapy stacji właściwego arkusza
+        try:
+            km_sheet_clicked = float(st.session_state.get("station_maps", {}).get(sheet_clicked, {}).get(station_clicked, km_clicked))
+        except Exception:
+            km_sheet_clicked = km_clicked
+
+        # Domyślna godzina z eventu (ms od północy, z obsługą doby >24h)
+        try:
+            ms_val = float(evt_plot.get("ms"))
+            parsed = ms_val / 3600000.0
+        except Exception:
+            parsed = None
+        default_time = dt.time(int(parsed) % 24, int(round((parsed % 1) * 60))) if parsed is not None else dt.time(0, 0)
+
+        try:
+            @st.experimental_dialog("Edycja czasu (z wykresu)")
+            def time_dialog_plot():
+                st.write(f"Arkusz: {sheet_clicked}  •  Stacja: {station_clicked}  •  km: {km_sheet_clicked:.3f}  •  Pociąg: {col_id}")
+                t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"dlg_time_plot_{sheet_clicked}")
+                allow_propagate = parsed is not None
+                prop = st.checkbox("Uwzględnij zmianę na dalszej części trasy", value=True, disabled=not allow_propagate, key=f"dlg_prop_plot_{sheet_clicked}")
+                c1, c2, c3 = st.columns([1,1,1])
+                with c1:
+                    if st.button("Zapisz", type="primary", key=f"dlg_save_plot_{sheet_clicked}"):
+                        if prop and parsed is not None:
+                            new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
+                            delta_hours = new_dec - float(parsed)
+                        else:
+                            delta_hours = 0.0
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state)
+                        if prop and delta_hours != 0.0:
+                            propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
+                with c2:
+                    if st.button("Usuń postój", key=f"dlg_clear_plot_{sheet_clicked}"):
+                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
+                with c3:
+                    if st.button("Anuluj", key=f"dlg_cancel_plot_{sheet_clicked}"):
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
+
+            time_dialog_plot()
+        except Exception:
+            pass
 
     st.subheader("Tabela: km – stacja – pociągi")
     st.caption(f"Arkusz: {selected_sheet}")
@@ -248,7 +317,7 @@ if station_map and sheets_data:
                             st.session_state[grid_nonce_key] += 1
                             st.rerun()
                     with c3:
-                        if st.button("Cofnij", key=f"dlg_cancel_{selected_sheet}"):
+                        if st.button("Anuluj", key=f"dlg_cancel_{selected_sheet}"):
                             st.session_state[grid_nonce_key] += 1
                             st.rerun()
 
@@ -270,7 +339,7 @@ if station_map and sheets_data:
                             st.session_state[grid_nonce_key] += 1
                             st.rerun()
                     with c3:
-                        if st.button("Cofnij", key=f"fallback_cancel_{selected_sheet}"):
+                        if st.button("Anuluj", key=f"fallback_cancel_{selected_sheet}"):
                             st.session_state[grid_nonce_key] += 1
                             st.rerun()
 else:
