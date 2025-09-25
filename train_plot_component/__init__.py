@@ -1,10 +1,15 @@
-"""Public API for the train_plot_component package.
+import os
+import streamlit.components.v1 as components
+from pathlib import Path
 
-Allows convenient imports:
-    from train_plot_component import train_plot
-"""
+# Tryb deweloperski (jeśli frontend odpalasz np. `npm run dev`)
+# wtedy podajesz URL np. "http://localhost:3000"
+# ale w normalnym trybie (production) ładujesz pliki z dist
+_component_func = components.declare_component(
+    "train_plot_component",
+    path=str(Path(__file__).parent / "frontend" / "dist")
+)
 
-from .backend.train_plot_component import train_plot  # re-export
-
-__all__ = ["train_plot"]
-
+def train_plot(data, key=None):
+    """Wrapper do wywołania komponentu w Streamlit"""
+    return _component_func(data=data, key=key)
