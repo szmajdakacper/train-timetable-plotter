@@ -26,20 +26,31 @@ class TrainPlot extends StreamlitComponentBase {
     const { height = 420 } = (this.props.args as TrainPlotArgs) || {};
     return height + 24;
   };
+  private lastHeight?: number;
 
   public componentDidMount(): void {
-    Streamlit.setFrameHeight(this.getFrameHeight());
+    this.lastHeight = this.getFrameHeight();
+    Streamlit.setFrameHeight(this.lastHeight);
   }
 
-  public componentDidUpdate(prevProps: Readonly<any>): void {
-    const prevHeight = ((prevProps?.args as TrainPlotArgs) || {}).height ?? 420;
-    const currHeight = ((this.props.args as TrainPlotArgs) || {}).height ?? 420;
-    if (prevHeight !== currHeight) {
-      Streamlit.setFrameHeight(this.getFrameHeight());
+  public componentDidUpdate(): void {
+    const h = this.getFrameHeight();
+    if (this.lastHeight !== h) {
+      this.lastHeight = h;
+      Streamlit.setFrameHeight(h);
     }
   }
   public render = () => {
     const { yStations = [], series = [], xMinMs, xMaxMs, height = 420 } = (this.props.args as TrainPlotArgs) || {};
+
+    const fmtTime = (msInDay: number): string => {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const ms = ((Number(msInDay) % dayMs) + dayMs) % dayMs; // keep within 0..dayMs
+      const totalMin = Math.floor(ms / 60000);
+      const hh = String(Math.floor(totalMin / 60)).padStart(2, "0");
+      const mm = String(totalMin % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    };
 
     const echartsSeries = series.map(s => ({
       name: s.name,
@@ -53,9 +64,14 @@ class TrainPlot extends StreamlitComponentBase {
       tooltip: { trigger: "item" },
     }));
 
+    const kmValues = Array.isArray(yStations) && yStations.length > 0 ? yStations.map(s => (s as any).km as number) : [];
+    const yMin = kmValues.length ? Math.min(...kmValues) : undefined;
+    const yMax = kmValues.length ? Math.max(...kmValues) : undefined;
+
     const option = {
-      grid: { left: 80, right: 24, top: 24, bottom: 40 },
+      grid: { left: 80, right: 60, top: 24, bottom: 80 },
       color: ["#000"],
+      useUTC: true,
       tooltip: {
         trigger: "item",
         triggerOn: "mousemove|click",
@@ -66,9 +82,7 @@ class TrainPlot extends StreamlitComponentBase {
             const train = p.seriesName || "";
             const ms = Array.isArray(p.value) ? p.value[0] : p.value?.x;
             const km = Array.isArray(p.value) ? p.value[1] : p.value?.y;
-            const date = new Date(ms);
-            const hh = String(date.getUTCHours()).padStart(2, "0");
-            const mm = String(date.getUTCMinutes()).padStart(2, "0");
+            const hhmm = fmtTime(ms);
             // znajdź najbliższą stację względem km
             let station = "";
             if (Array.isArray(yStations) && yStations.length > 0) {
@@ -80,7 +94,7 @@ class TrainPlot extends StreamlitComponentBase {
               }
               station = `${(best as any).name}`;
             }
-            return `nr poc: ${train}<br/>stacja: ${station}<br/>km: ${Number(km).toFixed(3)}<br/>godzina: ${hh}:${mm}`;
+            return `nr poc: ${train}<br/>stacja: ${station}<br/>km: ${Number(km).toFixed(3)}<br/>godzina: ${hhmm}`;
           } catch {
             return "";
           }
@@ -90,7 +104,7 @@ class TrainPlot extends StreamlitComponentBase {
         type: "time",
         min: xMinMs ?? undefined,
         max: xMaxMs ?? undefined,
-        axisLabel: { formatter: (val: number) => new Date(val).toTimeString().slice(0,5) },
+        axisLabel: { formatter: (val: number) => fmtTime(val) },
         splitLine: { show: true, lineStyle: { color: "#999", width: 1, type: "solid" } },
         minorSplitLine: { show: true },
         minorTick: { show: true, splitNumber: 2 }, // 30 min i 15 min przez minor grid
@@ -105,8 +119,34 @@ class TrainPlot extends StreamlitComponentBase {
       },
       // Dorysujemy markery stacji jako markLine na osi Y
       dataZoom: [
-        { type: "inside", xAxisIndex: 0 },
-        { type: "slider", xAxisIndex: 0 },
+        { type: "inside", xAxisIndex: 0, filterMode: "none" },
+        {
+          type: "slider",
+          xAxisIndex: 0,
+          height: 30,
+          bottom: 25,
+          startValue: xMinMs ?? undefined,
+          endValue: xMaxMs ?? undefined,
+          labelFormatter: (value: any) => fmtTime(value),
+          filterMode: "none",
+        },
+        // Y-axis zoom (inside + slider)
+        { type: "inside", yAxisIndex: 0, filterMode: "none" },
+        {
+          type: "slider",
+          yAxisIndex: 0,
+          orient: "vertical",
+          right: 10,
+          top: 24,
+          bottom: 90,
+          startValue: yMin,
+          endValue: yMax,
+          labelFormatter: (v: any) => {
+            const n = typeof v === "number" ? v : Number(v);
+            return isFinite(n) ? n.toFixed(3) : "";
+          },
+          filterMode: "none",
+        },
       ],
       series: echartsSeries,
     };
