@@ -1,9 +1,15 @@
-"""Public API for the train_grid_component package.
+import os
+import streamlit.components.v1 as components
+from pathlib import Path
 
-Allows convenient imports:
-    from train_grid_component import train_grid
-"""
+# Tryb deweloperski (jeśli frontend odpalasz np. `npm run dev`)
+# wtedy podajesz URL np. "http://localhost:3000"
+# ale w normalnym trybie (production) ładujesz pliki z dist
+_component_func = components.declare_component(
+    "train_grid_component",
+    path=str(Path(__file__).parent / "frontend" / "dist")
+)
 
-from .backend.train_grid_component import train_grid  # re-export
-
-__all__ = ["train_grid"]
+def train_grid(data, key=None):
+    """Wrapper do wywołania komponentu w Streamlit"""
+    return _component_func(data=data, key=key)
