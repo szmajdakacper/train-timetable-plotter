@@ -114,6 +114,7 @@ class TrainPlot extends StreamlitComponentBase {
         type: "value",
         inverse: false,
         name: "km",
+        position: "left",
         axisLabel: { formatter: (v: number) => v.toFixed(3) },
         splitLine: { show: true },
         axisPointer: { show: false },
@@ -156,7 +157,7 @@ class TrainPlot extends StreamlitComponentBase {
     if (option.series && option.series.length > 0 && Array.isArray(yStations) && yStations.length > 0) {
       const markLines = yStations.map(s => ({
         yAxis: s.km,
-        label: { formatter: s.name, position: "start" },
+        label: { formatter: s.name, position: "insideStart", align: "left", distance: 6 },
         lineStyle: { type: "dashed", color: "#bbb" },
       }));
       (option.series[0] as any).markLine = { silent: true, data: markLines };
