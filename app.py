@@ -9,14 +9,19 @@ from train_grid_component.backend.train_grid_component import train_grid
 from train_plot_component.backend.train_plot_component import train_plot
 
 
-st.set_page_config(layout="wide", page_title="Train timetable debug")
+st.set_page_config(layout="wide", page_title="wykresy z tabeli - KD")
 
-st.title("🧪 Debug: Excel → session state")
+st.title("Rozkład Jazdy - wykresy z tabeli")
 
 uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file:
     try:
+        # zapamiętaj nazwę wczytanego pliku do nazwania eksportu
+        try:
+            st.session_state["uploaded_name"] = str(uploaded_file.name)
+        except Exception:
+            pass
         file_bytes = uploaded_file.getvalue()
         file_hash = hashlib.md5(file_bytes).hexdigest()
         if st.session_state.get("uploaded_hash") != file_hash:
@@ -26,7 +31,7 @@ if uploaded_file:
     except Exception as e:
         st.error(f"Nie udało się wczytać pliku: {e}")
 
-"""Sekcja główna: tabela km – stacja – pociągi"""
+"""Tabela km – stacja – pociągi"""
 station_map = st.session_state.get("station_map", {})
 sheets_data = st.session_state.get("sheets_data", [])
 
@@ -52,6 +57,110 @@ if station_map and sheets_data:
     # Filtr danych do wybranego arkusza
     active = next((entry for entry in sheets_data if entry.get("sheet") == selected_sheet), {"trains": []})
     trains_active = active.get("trains", [])
+
+    # Przyciski akcji
+    with st.container(border=True):
+        col_dl, _ = st.columns([1,5])
+
+        def _hhmm_from_any(val: any) -> str:
+            try:
+                # Jeśli dostajemy time_decimal (float w godzinach), nie używaj parse_time
+                if isinstance(val, (int, float)):
+                    d = float(val)
+                else:
+                    d = parse_time(val)
+                if d is None:
+                    return ""
+                h = int(d) % 24
+                m = int(round((d % 1) * 60))
+                if m == 60:
+                    h = (h + 1) % 24
+                    m = 0
+                return f"{h:02d}:{m:02d}"
+            except Exception:
+                return ""
+
+        def build_excel_bytes() -> bytes:
+            from io import BytesIO
+            from openpyxl import Workbook
+            from utils import normalize
+
+            wb = Workbook()
+            # usuń domyślny arkusz
+            try:
+                wb.remove(wb.active)
+            except Exception:
+                pass
+
+            station_maps_all = st.session_state.get("station_maps", {})
+
+            for entry in sheets_data:
+                sheet_name = str(entry.get("sheet"))
+                ws = wb.create_sheet(title=sheet_name[:31] or "Arkusz")
+
+                # Nagłówki stałe
+                ws["E3"] = "numer pociągu"
+                ws["D11"] = "km"
+                ws["E11"] = "ze stacji"
+
+                # Lista stacji/km z mapy wybranego arkusza (dla każdego arkusza jego własna mapa)
+                station_map_sheet = station_maps_all.get(sheet_name, {})
+                stations_sorted = sorted(station_map_sheet.items(), key=lambda kv: kv[1])
+
+                start_row = 12
+                for idx, (station_name, km_val) in enumerate(stations_sorted):
+                    r = start_row + idx
+                    # km jako liczba (Excel wyświetli przecinek wg regionalnych ustawień), 3 miejsca po przecinku
+                    c_km = ws.cell(row=r, column=4, value=float(km_val))  # D
+                    try:
+                        c_km.number_format = "0.000"
+                    except Exception:
+                        pass
+                    ws.cell(row=r, column=5, value=str(station_name))       # E
+
+                # "do stacji" w wierszu po ostatniej stacji
+                ws.cell(row=start_row + len(stations_sorted), column=5, value="do stacji")
+
+                # Kolumny pociągów – unikalne numery
+                trains_list = entry.get("trains", [])
+                train_nums = sorted({ str(t.get("train_number")) for t in trains_list })
+                # wiersz 3 od kolumny F w prawo
+                for j, tn in enumerate(train_nums):
+                    ws.cell(row=3, column=6 + j, value=tn)
+
+                # Zbuduj mapę czasów: (station, tn) -> time oraz (normalize(station), tn) -> time
+                # Preferuj time_decimal do formatowania
+                key_to_time = {}
+                key_to_time_norm = {}
+                for rec in trains_list:
+                    st_name = rec.get("station")
+                    tn = str(rec.get("train_number"))
+                    t_fmt = _hhmm_from_any(rec.get("time_decimal") if rec.get("time_decimal") is not None else rec.get("time"))
+                    key_to_time[(st_name, tn)] = t_fmt
+                    key_to_time_norm[(normalize(str(st_name)), tn)] = t_fmt
+
+                # Wypełnij czasy wg stacji i numerów pociągów
+                for i, (station_name, km_val) in enumerate(stations_sorted):
+                    r = start_row + i
+                    for j, tn in enumerate(train_nums):
+                        t_str = key_to_time.get((station_name, tn), "") or key_to_time_norm.get((normalize(str(station_name)), tn), "")
+                        if t_str:
+                            ws.cell(row=r, column=6 + j, value=t_str)
+
+            buf = BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            return buf.getvalue()
+
+        with col_dl:
+            xbytes = build_excel_bytes()
+            export_name = st.session_state.get("uploaded_name") or "rozkład.xlsx"
+            st.download_button(
+                label="Pobierz rozkład do xlsx",
+                data=xbytes,
+                file_name=export_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
 
     # Zbuduj kolumny pociągów (tylko z wybranego arkusza)
     train_numbers = [str(t["train_number"]) for t in trains_active]
@@ -101,6 +210,7 @@ if station_map and sheets_data:
 
     # Wykres tras (nad tabelą)
     st.subheader("Wykres tras pociągów")
+    plot_height = st.slider("Wysokość wykresu", min_value=600, max_value=4000, value=600, step=100, key="plot_height")
     # Oś Y: km (zaznaczamy stacje z mapy aktywnego arkusza jako markery)
     y_stations = [{"name": name, "km": float(km)} for name, km in station_items]
 
@@ -164,10 +274,11 @@ if station_map and sheets_data:
                 # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
                 series.append({"name": f"{tn} ({sheet})", "points": pts})
 
-    # Dynamiczny zakres X z marginesem ±30 min
-    pad = 30 * 60 * 1000
-    x_min = max(0, (global_min_ms or 0) - pad)
-    x_max = (global_max_ms or (24 * 3600 * 1000)) + pad
+    # Dynamiczny zakres X z marginesem: lewy -2h dla etykiet, prawy +30 min
+    pad_left = 2 * 60 * 60 * 1000
+    pad_right = 30 * 60 * 1000
+    x_min = max(0, (global_min_ms or 0) - pad_left)
+    x_max = (global_max_ms or (24 * 3600 * 1000)) + pad_right
 
     # Nonce do resetu komponentu wykresu po akcji w modalu
     plot_nonce_key = f"plot_nonce_{selected_sheet}"
@@ -180,7 +291,7 @@ if station_map and sheets_data:
         x_min_ms=x_min,
         x_max_ms=x_max,
         key=f"plot_{selected_sheet}_{st.session_state[plot_nonce_key]}",
-        height=420,
+        height=int(plot_height or 600),
     )
 
     # Obsługa dblclick z wykresu (edycja czasu w dowolnym arkuszu)
@@ -348,6 +459,9 @@ else:
 st.markdown("---")
 
 # Debugowy podgląd danych zapisanych w stanie aplikacji
+
+st.title("🧪 Debug: Excel → session state")
+
 st.subheader("Mapa stacji (z 1. arkusza)")
 if station_map:
     st.json(station_map)
@@ -380,3 +494,15 @@ if sheets_data:
         st.dataframe(minimal_view, use_container_width=True)
 else:
     st.info("Brak danych pociągów. Wczytaj plik.")
+
+# Footer – profesjonalny podpis
+footer_year = dt.date.today().year
+st.markdown(
+    f"""
+    <style>
+    .app-footer {{ position: fixed; left: 0; right: 0; bottom: 0; padding: 6px 10px; text-align: center; color: #666; background: rgba(0,0,0,0.03); font-size: 12px; z-index: 10000; }}
+    </style>
+    <div class=\"app-footer\">© {footer_year} Kacper Szmajda</div>
+    """,
+    unsafe_allow_html=True,
+)
