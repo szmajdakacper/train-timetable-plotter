@@ -6,6 +6,7 @@ from excel_loader import read_and_store_in_session
 from table_editor import save_cell_time, clear_cell_time, propagate_time_shift
 from utils import parse_time
 from train_grid_component.backend.train_grid_component import train_grid
+from train_plot_component.backend.train_plot_component import train_plot
 
 
 st.set_page_config(layout="wide", page_title="Train timetable debug")
@@ -79,6 +80,59 @@ if station_map and sheets_data:
         table_rows.append(row)
 
     df_view = pd.DataFrame(table_rows)
+
+    # Wykres tras (nad tabelą)
+    st.subheader("Wykres tras pociągów")
+    # Oś Y: km (zaznaczamy stacje z mapy aktywnego arkusza jako markery)
+    y_stations = [{"name": name, "km": float(km)} for name, km in station_items]
+
+    # Budowa serii: dla każdego pociągu z KAŻDEGO arkusza punkty [czas_ms, indeks_stacji]
+    def hours_to_ms(hours_float: float) -> int:
+        return int(float(hours_float) * 3600000.0)
+
+    # Zbuduj dla każdego arkusza mapę: station -> {train_number: time}
+    sheet_to_station_train = {}
+    sheet_to_trains = {}
+    for entry in sheets_data:
+        sheet = entry.get("sheet")
+        station_to_train = {}
+        trains = entry.get("trains", [])
+        for rec in trains:
+            station_name = rec["station"]
+            tn = str(rec["train_number"]) 
+            station_bucket = station_to_train.setdefault(station_name, {})
+            station_bucket[tn] = rec["time"]
+        sheet_to_station_train[sheet] = station_to_train
+        sheet_to_trains[sheet] = sorted({ str(t["train_number"]) for t in trains })
+
+    # Dla osi Y wykorzystujemy km z wybranego arkusza; rysujemy WSZYSTKIE pociągi z KAŻDEGO arkusza
+    station_to_km_selected = { name: float(km) for name, km in station_items }
+
+    series = []
+    for sheet, station_to_train in sheet_to_station_train.items():
+        for tn in sheet_to_trains.get(sheet, []):
+            pts = []
+            for station_name, km_selected in station_items:
+                time_str = station_to_train.get(station_name, {}).get(tn, "")
+                if not time_str:
+                    continue
+                parsed = parse_time(time_str)
+                if parsed is None:
+                    continue
+                pts.append([hours_to_ms(parsed), float(km_selected)])
+            if pts:
+                # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
+                series.append({"name": f"{tn} ({sheet})", "points": pts})
+
+    _ = train_plot(
+        y_stations=y_stations,
+        series=series,
+        x_min_ms=0,
+        x_max_ms=24 * 3600 * 1000,
+        key=f"plot_{selected_sheet}",
+        height=420,
+    )
+
     st.subheader("Tabela: km – stacja – pociągi")
     st.caption(f"Arkusz: {selected_sheet}")
 
