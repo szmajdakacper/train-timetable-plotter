@@ -2,10 +2,6 @@
 node_modules/
 **/node_modules/
 
-# Build artifacts (global)
-dist/
-**/dist/
-
 # Allow committed build assets for Streamlit custom components
 !train_grid_component/frontend/dist/
 !train_grid_component/frontend/dist/**
