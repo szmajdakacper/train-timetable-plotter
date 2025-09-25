@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Dict, Optional, Tuple, List
 import unicodedata
+import re
 
 # ===================== Helpers =====================
 
@@ -60,6 +61,16 @@ def parse_time(value) -> Optional[float]:
         return float(value) * 24
 
     s = str(value).strip()
+    # Support suffix like "(+1)" meaning +1 day
+    plus_days = 0
+    m = re.search(r"\(\s*\+(\d+)\s*\)\s*$", s)
+    if m:
+        try:
+            plus_days = int(m.group(1))
+        except Exception:
+            plus_days = 0
+        s = s[: m.start()].strip()
+
     # Normalize decimal comma -> dot for hh.mm and float-like strings
     s_norm = s.replace(",", ".")
 
@@ -70,7 +81,7 @@ def parse_time(value) -> Optional[float]:
             h = int(parts[0]) if parts[0] != "" else 0
             m = int(parts[1]) if len(parts) > 1 and parts[1] != "" else 0
             sec = int(parts[2]) if len(parts) > 2 and parts[2] != "" else 0
-            return h + m / 60 + sec / 3600
+            return h + m / 60 + sec / 3600 + 24 * plus_days
         except Exception:
             # not a valid hh:mm string
             return None
@@ -83,13 +94,18 @@ def parse_time(value) -> Optional[float]:
             if len(m_part) == 2 and m_part.isdigit() and h_part.lstrip("+-").isdigit():
                 h_val = int(h_part)
                 m_val = int(m_part)
-                return h_val + m_val / 60
+                return h_val + m_val / 60 + 24 * plus_days
             # Otherwise treat as Excel float written as string (fraction of day)
-            return float(s_norm) * 24
+            return float(s_norm) * 24 + 24 * plus_days
         except Exception:
             return None
 
-    # fallback: not recognized
+    # fallback: not recognized — try plain integer hours (e.g., "23"), then apply plus_days
+    if s_norm.isdigit():
+        try:
+            return float(int(s_norm)) + 24 * plus_days
+        except Exception:
+            return None
     return None
 
 def format_time_decimal(t: float) -> str:
@@ -233,13 +249,22 @@ def extract_train_columns(
             c += 1
             continue
 
-        s = str(v).strip()
+        s_raw = str(v).strip()
+        s_norm = normalize(s_raw)
         # candidate if contains any digit
-        if any(ch.isdigit() for ch in s):
-            # detect merged span: subsequent header cells that are NaN are considered part of the span
+        if any(ch.isdigit() for ch in s_raw):
+            # detect span: originally-merged (NaN followers) OR contiguous identical headers after unmerge
             span_end = c
-            while span_end + 1 < ncols and pd.isna(df.iat[train_row, span_end + 1]):
-                span_end += 1
+            while span_end + 1 < ncols:
+                next_val = df.iat[train_row, span_end + 1]
+                if pd.isna(next_val):
+                    span_end += 1
+                    continue
+                next_norm = normalize(str(next_val).strip())
+                if next_norm == s_norm and next_norm != "":
+                    span_end += 1
+                    continue
+                break
 
             # columns that belong to this header span
             cols_in_span = list(range(c, span_end + 1))
@@ -270,14 +295,14 @@ def extract_train_columns(
                         # fallback to original heuristic c+1 (if in bounds)
                         time_col = c + 1 if c + 1 < ncols else c
 
-                key = unique_key(s)
+                key = unique_key(s_raw)
                 mapping[key] = time_col
             else:
                 # merged header — inspect each column in the span and add those that contain times
                 added_any = False
                 for j in cols_in_span:
                     if column_has_time(j):
-                        key = unique_key(s)
+                        key = unique_key(s_raw)
                         mapping[key] = j
                         added_any = True
 
@@ -286,7 +311,7 @@ def extract_train_columns(
                 if not added_any:
                     for j in cols_in_span:
                         time_col = j + 1 if j + 1 < ncols else j
-                        key = unique_key(s)
+                        key = unique_key(s_raw)
                         mapping[key] = time_col
 
             # jump to column after span
