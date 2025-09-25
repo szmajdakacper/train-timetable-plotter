@@ -8,11 +8,17 @@ Interactive visualization tool for train timetables that allows you to:
 
 ## Features
 
-- 📈 Interactive plot with train paths
-- 📊 Detailed timetable view for each sheet
-- 🔍 Train highlighting for easy analysis (klik nagłówka kolumny pociągu)
-- 🪵 Debug mode toggle in sidebar
-- 📱 Responsive design that works on all devices
+- 📈 Interaktywny wykres tras (ECharts, komponent Streamlit)
+- 🧾 Edytowalna tabela (AG Grid jako custom component)
+- 🖱️ Edycja godziny z tabeli i z wykresu (dblclick + modal)
+- 🔄 Propagacja zmian czasu w dół trasy
+- 🧭 Zoom/pan na osi czasu i km, osobne suwaki zakresu X i Y
+- 🕒 Poprawna obsługa czasów po północy (np. 00:05 (+1))
+- ⬇️ Eksport do XLSX w układzie:
+  - E3 = "numer pociągu", D11 = "km", E11 = "ze stacji"
+  - kol. D od wiersza 12: km (liczby, format 0.000); kol. E: stacje
+  - wiersz 3 od kol. F: numery pociągów; czasy HH:MM we właściwych komórkach
+  - wiersz po ostatniej stacji: E = "do stacji"
 
 ## Installation
 
@@ -31,9 +37,25 @@ python -m venv venv
 source venv/bin/activate
 ```
 
-3. Install required packages:
+3. Install backend dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+4. Build frontend components (one time after clone or when changed):
+```bash
+# Grid component
+cd train_grid_component/frontend
+npm install
+npm run build
+
+# Plot component
+cd ../../train_plot_component/frontend
+npm install
+npm run build
+
+# Back to project root
+cd ../../..
 ```
 
 ## Usage
@@ -50,10 +72,11 @@ streamlit run app.py
    - Train numbers should be in the header row
    - Each sheet can represent a different line or direction
 
-4. Interact with the visualization:
-   - Click train numbers to highlight specific trains
-   - Hover over points to see detailed timing information
-   - View multiple sheets for different lines/directions
+4. Interact with the app:
+   - Dblclick w tabeli lub na punkcie wykresu otwiera modal edycji czasu
+   - Checkbox w modalu pozwala propagować zmianę na dalszą część trasy
+   - Suwakiem ustaw wysokość wykresu (600–4000 px)
+   - Suwaki zoomu X/Y regulują zakres; linie poza zakresem są utrzymywane (filterMode="none")
 
 ## Input File Format
 
@@ -62,14 +85,16 @@ The Excel file should be structured as follows:
   - "Numer pociągu" (header row with train numbers)
   - "ze stacji" and "do stacji" (mark the start and end of station list)
   - "km" (kilometre column)
-- The first sheet serves as the reference list of stations and km; other sheets must use the same stations
+- The first sheet serves as the reference list of stations and km; other sheets can have their own maps; wykres używa mapy stacji bieżącego arkusza, eksport do XLSX korzysta z map arkuszy docelowych
 - Time values: HH:MM, HH:MM:SS, HH.MM (minutes), or Excel fraction of day (e.g., 0.25)
 - Multiple sheets allowed for different lines/directions
 
 ## Contributing
-## Debugging
+## Debugging / Notes
 
-Enable "Tryb debug" in the sidebar to print additional logs to the server console. This helps diagnose time parsing and column mapping issues.
+- Czasy mogą być wpisywane jako HH:MM, HH:MM:SS, HH.MM, lub ułamki doby; parser obsługuje także sufiks "(+N)" (np. 00:05 (+1)).
+- Eksport do XLSX wiąże czasy po kluczu (stacja, numer pociągu); dopasowanie stacji toleruje drobne różnice (normalizacja).
+- Jeśli po zmianach w frontendzie komponentów coś nie działa, zbuduj je ponownie (`npm run build`).
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
