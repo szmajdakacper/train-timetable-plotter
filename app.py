@@ -62,12 +62,30 @@ if station_map and sheets_data:
     active_station_map = station_maps.get(selected_sheet, station_map)
     station_items = sorted(active_station_map.items(), key=lambda kv: kv[1])
 
-    # Zbuduj strukturę: {(station, km): {train_number: time}} tylko dla wybranego arkusza
+    # Zbuduj strukturę: {(station, km): {train_number: time_display}} tylko dla wybranego arkusza
     cell_map = {}
     for rec in trains_active:
         key = (rec["station"], float(rec["km"]))
         bucket = cell_map.setdefault(key, {})
-        bucket[str(rec["train_number"]) ] = rec["time"]
+        # Preferuj time_decimal, aby ujednolicić wyświetlanie bez sufiksu (+d)
+        try:
+            tdec = float(rec.get("time_decimal")) if rec.get("time_decimal") is not None else None
+        except Exception:
+            tdec = None
+        if tdec is None:
+            from utils import parse_time
+            parsed = parse_time(rec.get("time"))
+            tdec = float(parsed) if parsed is not None else None
+        if tdec is not None:
+            hh = int(tdec) % 24
+            mm = int(round((tdec % 1) * 60))
+            if mm == 60:
+                hh = (hh + 1) % 24
+                mm = 0
+            display_val = f"{hh:02d}:{mm:02d}"
+        else:
+            display_val = str(rec.get("time") or "")
+        bucket[str(rec["train_number"]) ] = display_val
 
     # Render: tabela
     import pandas as pd
@@ -109,9 +127,12 @@ if station_map and sheets_data:
     station_to_km_selected = { name: float(km) for name, km in station_items }
 
     series = []
+    global_min_ms = None
+    global_max_ms = None
     for sheet, station_to_train in sheet_to_station_train.items():
         for tn in sheet_to_trains.get(sheet, []):
             pts = []
+            base_time = None
             for station_name, km_selected in station_items:
                 time_str = station_to_train.get(station_name, {}).get(tn, "")
                 if not time_str:
@@ -119,16 +140,35 @@ if station_map and sheets_data:
                 parsed = parse_time(time_str)
                 if parsed is None:
                     continue
-                pts.append([hours_to_ms(parsed), float(km_selected)])
+                # korekta przekroczenia północy – gdy różnica > 12h, dodaj 24h
+                if base_time is None:
+                    adj = parsed
+                    base_time = parsed
+                else:
+                    if parsed < base_time and (base_time - parsed) > 12:
+                        adj = parsed + 24
+                    else:
+                        adj = parsed
+                    if parsed > base_time and (parsed - base_time) > 12:
+                        base_time = parsed
+                ms = hours_to_ms(adj)
+                pts.append([ms, float(km_selected)])
+                global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
+                global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
             if pts:
                 # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
                 series.append({"name": f"{tn} ({sheet})", "points": pts})
 
+    # Dynamiczny zakres X z marginesem ±30 min
+    pad = 30 * 60 * 1000
+    x_min = max(0, (global_min_ms or 0) - pad)
+    x_max = (global_max_ms or (24 * 3600 * 1000)) + pad
+
     _ = train_plot(
         y_stations=y_stations,
         series=series,
-        x_min_ms=0,
-        x_max_ms=24 * 3600 * 1000,
+        x_min_ms=x_min,
+        x_max_ms=x_max,
         key=f"plot_{selected_sheet}",
         height=420,
     )
