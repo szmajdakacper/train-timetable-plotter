@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Sequence
 import unicodedata
 import re
 
@@ -28,6 +28,26 @@ def parse_km(value) -> Optional[float]:
         return float(s)
     except ValueError:
         return None
+
+def apply_midnight_correction(times: Sequence[float]) -> List[float]:
+    """Correct a sequence of raw decimal-hour times for midnight crossings.
+
+    Uses a cumulative day_offset counter: whenever time drops by >12 h
+    compared to the previous *adjusted* value, assume a midnight crossing
+    and add another 24 h.
+    """
+    result: List[float] = []
+    day_offset = 0
+    prev_adj: Optional[float] = None
+    for t in times:
+        adj = t + day_offset * 24
+        if prev_adj is not None and (prev_adj - adj) > 12:
+            day_offset += 1
+            adj += 24
+        result.append(adj)
+        prev_adj = adj
+    return result
+
 
 def parse_time(value) -> Optional[float]:
     """
@@ -98,8 +118,11 @@ def parse_time(value) -> Optional[float]:
                 h_val = int(h_part)
                 m_val = int(m_part)
                 return h_val + m_val / 60 + 24 * plus_days
-            # Otherwise treat as Excel float written as string (fraction of day)
-            return float(s_norm) * 24 + 24 * plus_days
+            # Distinguish Excel day fraction (< 1) from already-in-hours value
+            f_val = float(s_norm)
+            if f_val < 1:
+                return f_val * 24 + 24 * plus_days  # Excel day fraction
+            return f_val + 24 * plus_days  # Already in hours
         except Exception:
             return None
 
@@ -123,6 +146,8 @@ def format_time_hhmm(t: float) -> str:
 
 def format_time_decimal(t: float) -> str:
     """Convert decimal hours to 'HH:MM' with optional +N days."""
+    if t < 0:
+        t = t % 24
     total_h = int(t)
     m = int(round((t % 1) * 60))
     if m == 60:
@@ -175,14 +200,15 @@ def find_headers(df: pd.DataFrame) -> Dict[str, Optional[int]]:
     for r in range(rows):
         for c in range(cols):
             v = normalize(df.iat[r, c]).rstrip(":")
-            if v in TRAIN_HEADER_VARIANTS:
+            if v in TRAIN_HEADER_VARIANTS and pos["train_row"] is None:
                 pos["train_row"] = r
-            elif v in KM_HEADER_VARIANTS:
+            elif v in KM_HEADER_VARIANTS and pos["km_col"] is None:
                 pos["km_col"] = c
-            elif v in STATION_START_VARIANTS:
+            elif v in STATION_START_VARIANTS and pos["station_start_row"] is None:
                 pos["station_start_row"] = r
-                pos["station_col"] = c
-            elif v in STATION_END_VARIANTS:
+                if pos["station_col"] is None:
+                    pos["station_col"] = c
+            elif v in STATION_END_VARIANTS and pos["station_end_row"] is None:
                 pos["station_end_row"] = r
 
     return pos
@@ -352,8 +378,7 @@ def extract_train_paths(
             print(msg)
 
     for train_nr, col in train_columns.items():
-        points: List[Tuple[float, float, str]] = []
-        base_time: Optional[float] = None
+        raw_entries: List[Tuple[float, float, str]] = []  # (raw_time, km, station)
         dbg(f"\nProcessing train {train_nr}")
 
         for km, station, r in stations:
@@ -361,27 +386,15 @@ def extract_train_paths(
             t = parse_time(val)
             if t is not None:
                 dbg(f"Station: {station}, Raw time: {val}, Parsed time: {t}")
-                if base_time is None:
-                    # pierwszy czas wyznacza bazę
-                    base_time = t
-                    adj_time = t
-                    dbg(f"Setting base time to: {base_time}")
-                else:
-                    # jeżeli czas jest mniejszy od bazy, dodaj 24h
-                    if t < base_time and (base_time - t) > 12:
-                        adj_time = t + 24
-                        dbg(f"Time {t} < base {base_time}, adding 24h -> {adj_time}")
-                    else:
-                        adj_time = t
-                        dbg(f"Using time as is: {t}")
+                raw_entries.append((t, km, station))
 
-                points.append((adj_time, km, station))
-
-                # aktualizuj bazę jeśli następny czas jest znacząco większy
-                if t > base_time and (t - base_time) > 12:
-                    base_time = t
-
-        if points:
+        if raw_entries:
+            raw_times = [e[0] for e in raw_entries]
+            corrected_times = apply_midnight_correction(raw_times)
+            points = [
+                (corrected_times[i], raw_entries[i][1], raw_entries[i][2])
+                for i in range(len(raw_entries))
+            ]
             paths[train_nr] = points
     return paths
 
