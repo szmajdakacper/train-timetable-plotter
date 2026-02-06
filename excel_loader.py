@@ -161,14 +161,26 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
 
             # Build entries: train_number - station - km (from this sheet) - time (HH:MM or HH:MM (+d))
             # Collect raw times per train first, then apply midnight correction
+            # Detect dual stations: (station_name, km) appearing in multiple rows
+            _station_occurrences = {}
+            for km_ref, station_name, row_idx in stations:
+                _station_occurrences.setdefault((station_name, float(km_ref)), []).append(row_idx)
+            _dual_keys = {k for k, v in _station_occurrences.items() if len(v) > 1}
+
             for train_nr, col in train_columns.items():
-                raw_entries = []  # (station_name, km_ref, raw_time)
+                raw_entries = []  # (station_name, km_ref, raw_time, stop_type)
                 for km_ref, station_name, row_idx in stations:
                     raw_val = df.iat[row_idx, col]
                     t = parse_time(raw_val)
                     if t is None:
                         continue
-                    raw_entries.append((station_name, float(km_ref), float(t)))
+                    sk = (station_name, float(km_ref))
+                    if sk in _dual_keys:
+                        occ_idx = _station_occurrences[sk].index(row_idx)
+                        stop_type = "o" if occ_idx > 0 else "p"
+                    else:
+                        stop_type = None
+                    raw_entries.append((station_name, float(km_ref), float(t), stop_type))
 
                 if not raw_entries:
                     continue
@@ -177,17 +189,18 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
                 raw_times = [e[2] for e in raw_entries]
                 corrected_times = apply_midnight_correction(raw_times)
 
-                for i, (station_name, km_ref, _raw_t) in enumerate(raw_entries):
+                for i, (station_name, km_ref, _raw_t, stop_type) in enumerate(raw_entries):
                     corrected_t = corrected_times[i]
-                    trains_list.append(
-                        {
-                            "train_number": str(train_nr),
-                            "station": station_name,
-                            "km": km_ref,
-                            "time": format_time_decimal(corrected_t),
-                            "time_decimal": corrected_t,
-                        }
-                    )
+                    rec = {
+                        "train_number": str(train_nr),
+                        "station": station_name,
+                        "km": km_ref,
+                        "time": format_time_decimal(corrected_t),
+                        "time_decimal": corrected_t,
+                    }
+                    if stop_type is not None:
+                        rec["stop_type"] = stop_type
+                    trains_list.append(rec)
         else:
             # No trains found or no stations available to map
             pass
