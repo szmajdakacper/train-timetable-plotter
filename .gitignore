@@ -35,6 +35,7 @@ Thumbs.db
 .cursor/
 
 # Python
+venv/
 __pycache__/
 *.py[cod]
 *.pyo
