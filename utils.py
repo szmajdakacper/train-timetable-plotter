@@ -56,9 +56,12 @@ def parse_time(value) -> Optional[float]:
         # fallthrough do parsowania tekstowego
         pass
 
-    # Excel float (np. 0.25 = 6:00)
+    # Numeric value: Excel day fraction (0–1) or already in hours
     if isinstance(value, (int, float)):
-        return float(value) * 24
+        f = float(value)
+        if f < 1:
+            return f * 24  # Excel day fraction (e.g., 0.25 = 6:00)
+        return f           # Already in hours (e.g., 6 = 6:00)
 
     s = str(value).strip()
     # Support suffix like "(+1)" meaning +1 day
@@ -120,12 +123,13 @@ def format_time_hhmm(t: float) -> str:
 
 def format_time_decimal(t: float) -> str:
     """Convert decimal hours to 'HH:MM' with optional +N days."""
-    days = int(t // 24)
-    h = int(t % 24)
+    total_h = int(t)
     m = int(round((t % 1) * 60))
     if m == 60:
-        h = (h + 1) % 24
+        total_h += 1
         m = 0
+    days = total_h // 24
+    h = total_h % 24
     if days == 0:
         return f"{h:02d}:{m:02d}"
     else:

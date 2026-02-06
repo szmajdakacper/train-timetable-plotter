@@ -9,6 +9,16 @@ from train_grid_component.backend.train_grid_component import train_grid
 from train_plot_component.backend.train_plot_component import train_plot
 
 
+def _decimal_to_time(d: float) -> dt.time:
+    """Convert decimal hours to dt.time, handling m==60 edge case."""
+    h = int(d) % 24
+    m = int(round((d % 1) * 60))
+    if m == 60:
+        h = (h + 1) % 24
+        m = 0
+    return dt.time(h, m)
+
+
 st.set_page_config(layout="wide", page_title="wykresy z tabeli - KD")
 
 st.title("Rozkład Jazdy - wykresy z tabeli")
@@ -306,7 +316,7 @@ if station_map and sheets_data:
             parsed = ms_val / 3600000.0
         except Exception:
             parsed = None
-        default_time = dt.time(int(parsed) % 24, int(round((parsed % 1) * 60))) if parsed is not None else dt.time(0, 0)
+        default_time = _decimal_to_time(parsed) if parsed is not None else dt.time(0, 0)
 
         try:
             @st.experimental_dialog("Edycja czasu (z wykresu)")
@@ -320,7 +330,8 @@ if station_map and sheets_data:
                     if st.button("Zapisz", type="primary", key=f"dlg_save_plot_{sheet_clicked}"):
                         if prop and parsed is not None:
                             new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
-                            delta_hours = new_dec - float(parsed)
+                            parsed_norm = float(parsed) % 24
+                            delta_hours = new_dec - parsed_norm
                         else:
                             delta_hours = 0.0
                         save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state)
@@ -404,7 +415,7 @@ if station_map and sheets_data:
             # Ustal domyślną godzinę z danych
             current_time_str = cell_map.get((station_clicked, float(km_clicked)), {}).get(col_id, "")
             parsed = parse_time(current_time_str) if current_time_str else None
-            default_time = dt.time(int(parsed) % 24, int(round((parsed % 1) * 60))) if parsed is not None else dt.time(0, 0)
+            default_time = _decimal_to_time(parsed) if parsed is not None else dt.time(0, 0)
 
             # Modal dialog edycji czasu (wymaga Streamlit 1.34+)
             try:
@@ -421,7 +432,8 @@ if station_map and sheets_data:
                             # Oblicz delta względem poprzedniej wartości jeśli propagacja aktywna
                             if prop and parsed is not None:
                                 new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
-                                delta_hours = new_dec - float(parsed)
+                                parsed_norm = float(parsed) % 24
+                                delta_hours = new_dec - parsed_norm
                             else:
                                 delta_hours = 0.0
 
