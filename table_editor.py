@@ -225,10 +225,12 @@ def propagate_time_shift(
     delta_hours: float,
     session_state: Any,
 ) -> None:
-    """Propagate a time shift to later stations (km > from_km) for the given train.
+    """Propagate a time shift to downstream stations for the given train.
 
-    Only adjusts records that already have a time. Handles day crossing via decimal hours
-    (format_time_decimal will render (+d) if needed).
+    Detects travel direction (ascending or descending km) from the train's
+    existing data.  Only adjusts records that already have a time.  Handles
+    day crossing via decimal hours (format_time_decimal will render (+d) if
+    needed).
     """
     sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
@@ -236,12 +238,32 @@ def propagate_time_shift(
         return
     trains_list: List[Dict[str, any]] = active.get("trains", [])
 
+    # Collect all records for this train that have valid time_decimal
+    train_recs = [
+        r for r in trains_list
+        if str(r.get("train_number")) == str(train_number) and r.get("time_decimal") is not None
+    ]
+
+    if len(train_recs) < 2:
+        # Not enough data to determine direction; nothing to propagate
+        return
+
+    # Detect direction: sort by km ascending, compare first vs last time
+    sorted_by_km = sorted(train_recs, key=lambda r: float(r.get("km", 0.0)))
+    first_time = float(sorted_by_km[0].get("time_decimal", 0.0))
+    last_time = float(sorted_by_km[-1].get("time_decimal", 0.0))
+    ascending = last_time >= first_time  # True = forward (km increases with time)
+
     for rec in trains_list:
         if str(rec.get("train_number")) != str(train_number):
             continue
         km_val = float(rec.get("km", 0.0))
-        if km_val <= float(from_km):
-            continue
+        if ascending:
+            if km_val <= float(from_km):
+                continue
+        else:
+            if km_val >= float(from_km):
+                continue
         t_dec = rec.get("time_decimal")
         if t_dec is None:
             continue
