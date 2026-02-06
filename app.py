@@ -47,6 +47,11 @@ st.markdown("""
             );
     }
 
+    /* Wymuszenie ciemnego tekstu niezależnie od trybu przeglądarki */
+    .stApp, .stApp * {
+        color: #1a1a1a;
+    }
+
     /* Nagłówek */
     .stApp h1 {
         color: #4a3728;
@@ -55,6 +60,9 @@ st.markdown("""
     /* Sidebar dopasowany kolorystycznie */
     [data-testid="stSidebar"] {
         background-color: #f3ece0;
+    }
+    [data-testid="stSidebar"], [data-testid="stSidebar"] * {
+        color: #1a1a1a;
     }
 
     /* Kontenery z lekkim podkładem */
