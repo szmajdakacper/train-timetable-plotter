@@ -70,6 +70,7 @@ class TrainPlot extends StreamlitComponentBase {
     const yMax = kmValues.length ? Math.max(...kmValues) : undefined;
 
     const option = {
+      backgroundColor: "#f7f2e8",
       grid: { left: 80, right: 60, top: 24, bottom: 80 },
       color: ["#000"],
       useUTC: true,
@@ -201,7 +202,7 @@ class TrainPlot extends StreamlitComponentBase {
     } as any;
 
     return (
-      <div style={{ width: "100%", height }}>
+      <div style={{ width: "100%", height, background: "#f7f2e8", borderRadius: 8, overflow: "hidden" }}>
         <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: "100%" }} onEvents={onEvents} />
       </div>
     );

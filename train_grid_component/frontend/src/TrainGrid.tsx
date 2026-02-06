@@ -69,7 +69,7 @@ class TrainGrid extends StreamlitComponentBase {
     };
 
     return (
-      <div className={theme} style={{ width: "100%", height }}>
+      <div className={theme} style={{ width: "100%", height, borderRadius: 8, overflow: "hidden" }}>
         <AgGridReact
           rowData={rowData}
           columnDefs={columnDefs}

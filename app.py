@@ -24,6 +24,47 @@ def _decimal_to_time(d: float) -> dt.time:
 
 st.set_page_config(layout="wide", page_title="wykresy z tabeli - KD")
 
+# --- Tło i stylizacja strony ---
+st.markdown("""
+<style>
+    /* Ciepłe kremowe tło z delikatnym wzorem lnianych linii */
+    .stApp {
+        background-color: #faf7f1;
+        background-image:
+            repeating-linear-gradient(
+                45deg,
+                rgba(195, 176, 145, 0.08),
+                rgba(195, 176, 145, 0.08) 1px,
+                transparent 1px,
+                transparent 14px
+            ),
+            repeating-linear-gradient(
+                -45deg,
+                rgba(195, 176, 145, 0.08),
+                rgba(195, 176, 145, 0.08) 1px,
+                transparent 1px,
+                transparent 14px
+            );
+    }
+
+    /* Nagłówek */
+    .stApp h1 {
+        color: #4a3728;
+    }
+
+    /* Sidebar dopasowany kolorystycznie */
+    [data-testid="stSidebar"] {
+        background-color: #f3ece0;
+    }
+
+    /* Kontenery z lekkim podkładem */
+    [data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"],
+    .stContainer {
+        border-radius: 6px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Rozkład Jazdy - wykresy z tabeli")
 
 uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx)", type=["xlsx"])
@@ -544,7 +585,7 @@ footer_year = dt.date.today().year
 st.markdown(
     f"""
     <style>
-    .app-footer {{ position: fixed; left: 0; right: 0; bottom: 0; padding: 6px 10px; text-align: center; color: #666; background: rgba(0,0,0,0.03); font-size: 12px; z-index: 10000; }}
+    .app-footer {{ position: fixed; left: 0; right: 0; bottom: 0; padding: 6px 10px; text-align: center; color: #8a7560; background: rgba(243, 236, 224, 0.85); font-size: 12px; z-index: 10000; border-top: 1px solid rgba(195, 176, 145, 0.2); }}
     </style>
     <div class=\"app-footer\">© {footer_year} Kacper Szmajda</div>
     """,
