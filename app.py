@@ -412,6 +412,23 @@ if station_map and sheets_data:
 
         _day_offset_plot = int(parsed // 24) if parsed is not None else 0
 
+        # Determine stop_type by matching clicked time to existing records
+        _stop_type_plot = None
+        if parsed is not None:
+            _plot_sheet_data = next((s for s in sheets_data if s.get("sheet") == sheet_clicked), None)
+            if _plot_sheet_data:
+                _best_delta = None
+                for _rec in _plot_sheet_data.get("trains", []):
+                    if (str(_rec.get("train_number")) == col_id
+                            and _rec.get("station") == station_clicked
+                            and abs(float(_rec.get("km", 0)) - km_sheet_clicked) < 0.01):
+                        _rd = _rec.get("time_decimal")
+                        if _rd is not None:
+                            _delta = abs(float(_rd) - parsed)
+                            if _best_delta is None or _delta < _best_delta:
+                                _best_delta = _delta
+                                _stop_type_plot = _rec.get("stop_type")
+
         try:
             @_dialog_decorator("Edycja czasu (z wykresu)")
             def time_dialog_plot():
@@ -428,7 +445,7 @@ if station_map and sheets_data:
                             delta_hours = new_dec - parsed_norm
                         else:
                             delta_hours = 0.0
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot)
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
                         if prop and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         st.session_state[plot_nonce_key] += 1
@@ -436,7 +453,7 @@ if station_map and sheets_data:
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"dlg_clear_plot_{sheet_clicked}"):
-                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
+                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state, stop_type=_stop_type_plot)
                         st.session_state[plot_nonce_key] += 1
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()
@@ -464,7 +481,7 @@ if station_map and sheets_data:
                             delta_hours = new_dec - parsed_norm
                         else:
                             delta_hours = 0.0
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot)
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
                         if prop_fb and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         st.session_state[plot_nonce_key] += 1
@@ -472,7 +489,7 @@ if station_map and sheets_data:
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"fallback_clear_plot_{sheet_clicked}"):
-                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
+                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state, stop_type=_stop_type_plot)
                         st.session_state[plot_nonce_key] += 1
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()

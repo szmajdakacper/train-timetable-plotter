@@ -1,5 +1,5 @@
 import io
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -14,9 +14,9 @@ from utils import (
 )
 
 
-def read_workbook(file_bytes: bytes) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
+def read_workbook(file_bytes: bytes) -> Tuple[List[str], Dict[str, pd.DataFrame], Dict[str, Set[int]]]:
     """Read all sheets with merged cells expanded so every cell in a merged range
-    carries the top-left value. Returns {name: DataFrame}.
+    carries the top-left value. Returns (sheet_names, {name: DataFrame}, {name: hidden_col_indices}).
 
     The resulting DataFrames keep Python None for empty cells (so pd.isna works),
     and preserve original types where possible.
@@ -24,9 +24,18 @@ def read_workbook(file_bytes: bytes) -> Tuple[List[str], Dict[str, pd.DataFrame]
     wb = load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=False)
     sheet_names = wb.sheetnames
     sheets: Dict[str, pd.DataFrame] = {}
+    hidden_cols: Dict[str, Set[int]] = {}
 
     for name in sheet_names:
         ws = wb[name]
+
+        # Collect hidden column indices (0-based) from column dimensions
+        sheet_hidden: Set[int] = set()
+        for col_dim in ws.column_dimensions.values():
+            if col_dim.hidden:
+                for ci in range(col_dim.min, col_dim.max + 1):
+                    sheet_hidden.add(ci - 1)  # convert 1-based to 0-based
+        hidden_cols[name] = sheet_hidden
 
         # Expand merged cells: copy top-left value into all cells of the merged range
         merged_ranges = list(ws.merged_cells.ranges)
@@ -70,10 +79,11 @@ def read_workbook(file_bytes: bytes) -> Tuple[List[str], Dict[str, pd.DataFrame]
         df = pd.DataFrame(trimmed_rows)
         sheets[name] = df
 
-    return sheet_names, sheets
+    return sheet_names, sheets, hidden_cols
 
 
-def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
+def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame],
+                       hidden_cols: Optional[Dict[str, Set[int]]] = None):
     """Extract station map from first sheet and per-sheet trains data.
 
     Returns a dict with keys:
@@ -159,6 +169,13 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
                 station_end_row=pos.get("station_end_row"),
             )
 
+            # Filter out hidden columns
+            if hidden_cols:
+                sheet_hidden = hidden_cols.get(sheet, set())
+                if sheet_hidden:
+                    train_columns = {k: v for k, v in train_columns.items()
+                                     if v not in sheet_hidden}
+
             # Build entries: train_number - station - km (from this sheet) - time (HH:MM or HH:MM (+d))
             # Collect raw times per train first, then apply midnight correction
             # Detect dual stations: (station_name, km) appearing in multiple rows
@@ -219,8 +236,8 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
 
 def read_and_store_in_session(file_bytes: bytes, session_state) -> None:
     """High-level helper to read workbook, extract data, and store in session_state."""
-    sheet_names, sheets = read_workbook(file_bytes)
-    data = extract_excel_data(sheet_names, sheets)
+    sheet_names, sheets, hidden_cols = read_workbook(file_bytes)
+    data = extract_excel_data(sheet_names, sheets, hidden_cols=hidden_cols)
     session_state["station_map"] = data["station_map"]
     session_state["station_maps"] = data.get("station_maps", {})
     session_state["station_check"] = data["station_check"]
