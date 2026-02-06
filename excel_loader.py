@@ -10,6 +10,7 @@ from utils import (
     extract_train_columns,
     parse_time,
     format_time_decimal,
+    apply_midnight_correction,
 )
 
 
@@ -159,19 +160,32 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame]):
             )
 
             # Build entries: train_number - station - km (from this sheet) - time (HH:MM or HH:MM (+d))
+            # Collect raw times per train first, then apply midnight correction
             for train_nr, col in train_columns.items():
+                raw_entries = []  # (station_name, km_ref, raw_time)
                 for km_ref, station_name, row_idx in stations:
                     raw_val = df.iat[row_idx, col]
                     t = parse_time(raw_val)
                     if t is None:
-                        continue  # skip stations with non-time cells
+                        continue
+                    raw_entries.append((station_name, float(km_ref), float(t)))
+
+                if not raw_entries:
+                    continue
+
+                # Apply midnight correction to the sequence of raw times
+                raw_times = [e[2] for e in raw_entries]
+                corrected_times = apply_midnight_correction(raw_times)
+
+                for i, (station_name, km_ref, _raw_t) in enumerate(raw_entries):
+                    corrected_t = corrected_times[i]
                     trains_list.append(
                         {
                             "train_number": str(train_nr),
                             "station": station_name,
-                            "km": float(km_ref),
-                            "time": format_time_decimal(float(t)),
-                            "time_decimal": float(t),
+                            "km": km_ref,
+                            "time": format_time_decimal(corrected_t),
+                            "time_decimal": corrected_t,
                         }
                     )
         else:

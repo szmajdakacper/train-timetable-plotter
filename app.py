@@ -8,6 +8,9 @@ from utils import parse_time, format_time_hhmm
 from train_grid_component.backend.train_grid_component import train_grid
 from train_plot_component.backend.train_plot_component import train_plot
 
+# Compat: st.dialog (Streamlit 1.37+) or st.experimental_dialog (1.34+)
+_dialog_decorator = getattr(st, 'dialog', None) or getattr(st, 'experimental_dialog', None)
+
 
 def _decimal_to_time(d: float) -> dt.time:
     """Convert decimal hours to dt.time, handling m==60 edge case."""
@@ -216,7 +219,8 @@ if station_map and sheets_data:
     def hours_to_ms(hours_float: float) -> int:
         return int(float(hours_float) * 3600000.0)
 
-    # Zbuduj dla każdego arkusza mapę: station -> {train_number: time}
+    # Zbuduj dla każdego arkusza mapę: station -> {train_number: time_decimal}
+    # time_decimal is already midnight-corrected at load time, so no inline correction needed.
     sheet_to_station_train = {}
     sheet_to_trains = {}
     for entry in sheets_data:
@@ -225,41 +229,24 @@ if station_map and sheets_data:
         trains = entry.get("trains", [])
         for rec in trains:
             station_name = rec["station"]
-            tn = str(rec["train_number"]) 
+            tn = str(rec["train_number"])
             station_bucket = station_to_train.setdefault(station_name, {})
-            station_bucket[tn] = rec["time"]
+            station_bucket[tn] = rec.get("time_decimal")
         sheet_to_station_train[sheet] = station_to_train
         sheet_to_trains[sheet] = sorted({ str(t["train_number"]) for t in trains })
 
     # Dla osi Y wykorzystujemy km z wybranego arkusza; rysujemy WSZYSTKIE pociągi z KAŻDEGO arkusza
-    station_to_km_selected = { name: float(km) for name, km in station_items }
-
     series = []
     global_min_ms = None
     global_max_ms = None
     for sheet, station_to_train in sheet_to_station_train.items():
         for tn in sheet_to_trains.get(sheet, []):
             pts = []
-            base_time = None
             for station_name, km_selected in station_items:
-                time_str = station_to_train.get(station_name, {}).get(tn, "")
-                if not time_str:
+                t_dec = station_to_train.get(station_name, {}).get(tn)
+                if t_dec is None:
                     continue
-                parsed = parse_time(time_str)
-                if parsed is None:
-                    continue
-                # korekta przekroczenia północy – gdy różnica > 12h, dodaj 24h
-                if base_time is None:
-                    adj = parsed
-                    base_time = parsed
-                else:
-                    if parsed < base_time and (base_time - parsed) > 12:
-                        adj = parsed + 24
-                    else:
-                        adj = parsed
-                    if parsed > base_time and (parsed - base_time) > 12:
-                        base_time = parsed
-                ms = hours_to_ms(adj)
+                ms = hours_to_ms(t_dec)
                 pts.append({
                     "value": [ms, float(km_selected)],
                     "station": station_name,
@@ -318,8 +305,10 @@ if station_map and sheets_data:
             parsed = None
         default_time = _decimal_to_time(parsed) if parsed is not None else dt.time(0, 0)
 
+        _day_offset_plot = int(parsed // 24) if parsed is not None else 0
+
         try:
-            @st.experimental_dialog("Edycja czasu (z wykresu)")
+            @_dialog_decorator("Edycja czasu (z wykresu)")
             def time_dialog_plot():
                 st.write(f"Arkusz: {sheet_clicked}  •  Stacja: {station_clicked}  •  km: {km_sheet_clicked:.3f}  •  Pociąg: {col_id}")
                 t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"dlg_time_plot_{sheet_clicked}")
@@ -334,19 +323,22 @@ if station_map and sheets_data:
                             delta_hours = new_dec - parsed_norm
                         else:
                             delta_hours = 0.0
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state)
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot)
                         if prop and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"dlg_clear_plot_{sheet_clicked}"):
                         clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
                 with c3:
                     if st.button("Anuluj", key=f"dlg_cancel_plot_{sheet_clicked}"):
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
 
             time_dialog_plot()
@@ -356,20 +348,33 @@ if station_map and sheets_data:
             with st.container(border=True):
                 st.write(f"Arkusz: {sheet_clicked}  •  Stacja: {station_clicked}  •  km: {km_sheet_clicked:.3f}  •  Pociąg: {col_id}")
                 t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"fallback_time_plot_{sheet_clicked}")
+                allow_propagate_fb = parsed is not None
+                prop_fb = st.checkbox("Uwzględnij zmianę na dalszej części trasy", value=True, disabled=not allow_propagate_fb, key=f"fallback_prop_plot_{sheet_clicked}")
                 c1, c2, c3 = st.columns([1,1,1])
                 with c1:
                     if st.button("Zapisz", type="primary", key=f"fallback_save_plot_{sheet_clicked}"):
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state)
+                        if prop_fb and parsed is not None:
+                            new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
+                            parsed_norm = float(parsed) % 24
+                            delta_hours = new_dec - parsed_norm
+                        else:
+                            delta_hours = 0.0
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot)
+                        if prop_fb and delta_hours != 0.0:
+                            propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"fallback_clear_plot_{sheet_clicked}"):
                         clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
                 with c3:
                     if st.button("Anuluj", key=f"fallback_cancel_plot_{sheet_clicked}"):
                         st.session_state[plot_nonce_key] += 1
+                        st.session_state[grid_nonce_key] += 1
                         st.rerun()
 
     st.subheader("Tabela: km – stacja – pociągi")
@@ -417,9 +422,11 @@ if station_map and sheets_data:
             parsed = parse_time(current_time_str) if current_time_str else None
             default_time = _decimal_to_time(parsed) if parsed is not None else dt.time(0, 0)
 
+            _day_offset_grid = int(parsed // 24) if parsed is not None else 0
+
             # Modal dialog edycji czasu (wymaga Streamlit 1.34+)
             try:
-                @st.experimental_dialog("Edycja czasu")
+                @_dialog_decorator("Edycja czasu")
                 def time_dialog():
                     st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                     t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"dlg_time_{selected_sheet}")
@@ -437,19 +444,22 @@ if station_map and sheets_data:
                             else:
                                 delta_hours = 0.0
 
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state)
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid)
                             if prop and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"dlg_clear_{selected_sheet}"):
                             clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
                     with c3:
                         if st.button("Anuluj", key=f"dlg_cancel_{selected_sheet}"):
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
 
                 time_dialog()
@@ -459,20 +469,33 @@ if station_map and sheets_data:
                 with st.container(border=True):
                     st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                     t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"fallback_time_{selected_sheet}")
+                    allow_propagate_fb = parsed is not None
+                    prop_fb = st.checkbox("Uwzględnij zmianę na dalszej części trasy", value=True, disabled=not allow_propagate_fb, key=f"fallback_prop_{selected_sheet}")
                     c1, c2, c3 = st.columns([1,1,1])
                     with c1:
                         if st.button("Zapisz", type="primary", key=f"fallback_save_{selected_sheet}"):
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state)
+                            if prop_fb and parsed is not None:
+                                new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
+                                parsed_norm = float(parsed) % 24
+                                delta_hours = new_dec - parsed_norm
+                            else:
+                                delta_hours = 0.0
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid)
+                            if prop_fb and delta_hours != 0.0:
+                                propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"fallback_clear_{selected_sheet}"):
                             clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
                     with c3:
                         if st.button("Anuluj", key=f"fallback_cancel_{selected_sheet}"):
                             st.session_state[grid_nonce_key] += 1
+                            st.session_state[plot_nonce_key] += 1
                             st.rerun()
 else:
     st.info("Brak danych do zbudowania tabeli. Wczytaj plik.")

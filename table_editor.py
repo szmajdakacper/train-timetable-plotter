@@ -124,10 +124,13 @@ def save_cell_time(
     train_number: str,
     time_value: _dt.time,
     session_state: Any,
+    day_offset: int = 0,
 ) -> None:
     """Save a single cell time into session_state for the given sheet.
 
     If record exists, it is updated; otherwise it is created.
+    ``day_offset`` adds full days (24 h each) to the stored decimal so that
+    midnight-crossing times are preserved correctly.
     """
     sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
@@ -144,7 +147,7 @@ def save_cell_time(
     h = int(time_value.hour)
     m = int(getattr(time_value, "minute", 0) or 0)
     s = int(getattr(time_value, "second", 0) or 0)
-    decimal = h + m / 60 + s / 3600
+    decimal = h + m / 60 + s / 3600 + day_offset * 24
     canonical = format_time_decimal(float(decimal))
 
     # (debug usunięty)
@@ -271,6 +274,8 @@ def propagate_time_shift(
             new_dec = float(t_dec) + float(delta_hours)
         except Exception:
             continue
+        if new_dec < 0:
+            new_dec = new_dec % 24
         rec["time_decimal"] = new_dec
         rec["time"] = format_time_decimal(new_dec)
 
