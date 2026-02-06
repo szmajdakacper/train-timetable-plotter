@@ -70,6 +70,25 @@ st.markdown("""
     .stContainer {
         border-radius: 6px;
     }
+
+    /* Upload i przycisk pobierania — jasne tło niezależnie od trybu przeglądarki */
+    [data-testid="stFileUploader"],
+    [data-testid="stFileUploader"] * {
+        background-color: transparent;
+    }
+    [data-testid="stFileUploader"] section {
+        background-color: #e8f0fe;
+        border-color: #90b4e0;
+    }
+    [data-testid="stDownloadButton"] button {
+        background-color: #e8f0fe;
+        border-color: #90b4e0;
+        color: #1a1a1a;
+    }
+    [data-testid="stDownloadButton"] button:hover {
+        background-color: #d0e2fc;
+        border-color: #6a9bd8;
+    }
 </style>
 """, unsafe_allow_html=True)
 
