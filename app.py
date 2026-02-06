@@ -150,33 +150,22 @@ if station_map and sheets_data:
                 ws["E3"] = "numer pociągu"
                 ws["D11"] = "km"
                 ws["E11"] = "ze stacji"
+                ws["F11"] = "p/o"
 
                 # Lista stacji/km z mapy wybranego arkusza (dla każdego arkusza jego własna mapa)
                 station_map_sheet = station_maps_all.get(sheet_name, {})
                 stations_sorted = sorted(station_map_sheet.items(), key=lambda kv: kv[1])
 
                 start_row = 12
-                for idx, (station_name, km_val) in enumerate(stations_sorted):
-                    r = start_row + idx
-                    # km jako liczba (Excel wyświetli przecinek wg regionalnych ustawień), 3 miejsca po przecinku
-                    c_km = ws.cell(row=r, column=4, value=float(km_val))  # D
-                    try:
-                        c_km.number_format = "0.000"
-                    except Exception:
-                        pass
-                    ws.cell(row=r, column=5, value=str(station_name))       # E
-
-                # "do stacji" w wierszu po ostatniej stacji
-                ws.cell(row=start_row + len(stations_sorted), column=5, value="do stacji")
 
                 # Kolumny pociągów – unikalne numery
                 trains_list = entry.get("trains", [])
-                train_nums = sorted({ str(t.get("train_number")) for t in trains_list })
-                # wiersz 3 od kolumny F w prawo
+                train_nums = list(dict.fromkeys(str(t.get("train_number")) for t in trains_list))
+                # wiersz 3 od kolumny G w prawo (kolumna F = p/o)
                 for j, tn in enumerate(train_nums):
-                    ws.cell(row=3, column=6 + j, value=tn)
+                    ws.cell(row=3, column=7 + j, value=tn)
 
-                # Zbuduj mapę czasów: (station, tn) -> time oraz (normalize(station), tn) -> time
+                # Zbuduj mapę czasów: (station, tn) -> {"p": time, "o": time}
                 # Preferuj time_decimal do formatowania
                 key_to_time = {}
                 key_to_time_norm = {}
@@ -184,16 +173,69 @@ if station_map and sheets_data:
                     st_name = rec.get("station")
                     tn = str(rec.get("train_number"))
                     t_fmt = _hhmm_from_any(rec.get("time_decimal") if rec.get("time_decimal") is not None else rec.get("time"))
-                    key_to_time[(st_name, tn)] = t_fmt
-                    key_to_time_norm[(normalize(str(st_name)), tn)] = t_fmt
+                    rec_stop_type = rec.get("stop_type", "p")
+                    key_to_time.setdefault((st_name, tn), {})[rec_stop_type] = t_fmt
+                    key_to_time_norm.setdefault((normalize(str(st_name)), tn), {})[rec_stop_type] = t_fmt
 
-                # Wypełnij czasy wg stacji i numerów pociągów
+                def _get_time(station_name, tn, slot):
+                    d = key_to_time.get((station_name, tn)) or key_to_time_norm.get((normalize(str(station_name)), tn)) or {}
+                    return d.get(slot, "")
+
+                # Wykryj stacje z podwójnym wpisem (przyjazd + odjazd)
+                xlsx_dual_stations = set()
+                for (st_name, tn), times_d in key_to_time.items():
+                    if "o" in times_d:
+                        for s_name, s_km in stations_sorted:
+                            if s_name == st_name or normalize(str(s_name)) == normalize(str(st_name)):
+                                xlsx_dual_stations.add((s_name, s_km))
+                                break
+
+                # Wypełnij czasy wg stacji i numerów pociągów (z obsługą podwójnych wierszy)
+                row_offset = 0
                 for i, (station_name, km_val) in enumerate(stations_sorted):
-                    r = start_row + i
-                    for j, tn in enumerate(train_nums):
-                        t_str = key_to_time.get((station_name, tn), "") or key_to_time_norm.get((normalize(str(station_name)), tn), "")
-                        if t_str:
-                            ws.cell(row=r, column=6 + j, value=t_str)
+                    if (station_name, km_val) in xlsx_dual_stations:
+                        # Wiersz przyjazdu (p)
+                        r_p = start_row + i + row_offset
+                        c_km_p = ws.cell(row=r_p, column=4, value=float(km_val))
+                        try:
+                            c_km_p.number_format = "0.000"
+                        except Exception:
+                            pass
+                        ws.cell(row=r_p, column=5, value=str(station_name))
+                        ws.cell(row=r_p, column=6, value="p")
+                        for j, tn in enumerate(train_nums):
+                            t_str = _get_time(station_name, tn, "p")
+                            if t_str:
+                                ws.cell(row=r_p, column=7 + j, value=t_str)
+                        # Wiersz odjazdu (o)
+                        row_offset += 1
+                        r_o = start_row + i + row_offset
+                        c_km_o = ws.cell(row=r_o, column=4, value=float(km_val))
+                        try:
+                            c_km_o.number_format = "0.000"
+                        except Exception:
+                            pass
+                        ws.cell(row=r_o, column=5, value=str(station_name))
+                        ws.cell(row=r_o, column=6, value="o")
+                        for j, tn in enumerate(train_nums):
+                            t_str = _get_time(station_name, tn, "o")
+                            if t_str:
+                                ws.cell(row=r_o, column=7 + j, value=t_str)
+                    else:
+                        r = start_row + i + row_offset
+                        c_km = ws.cell(row=r, column=4, value=float(km_val))
+                        try:
+                            c_km.number_format = "0.000"
+                        except Exception:
+                            pass
+                        ws.cell(row=r, column=5, value=str(station_name))
+                        for j, tn in enumerate(train_nums):
+                            t_str = _get_time(station_name, tn, "p")
+                            if t_str:
+                                ws.cell(row=r, column=7 + j, value=t_str)
+
+                # "do stacji" w wierszu po ostatniej stacji (uwzględnia dodatkowe wiersze)
+                ws.cell(row=start_row + len(stations_sorted) + row_offset, column=5, value="do stacji")
 
             buf = BytesIO()
             wb.save(buf)
@@ -212,14 +254,14 @@ if station_map and sheets_data:
 
     # Zbuduj kolumny pociągów (tylko z wybranego arkusza)
     train_numbers = [str(t["train_number"]) for t in trains_active]
-    unique_trains = sorted(set(train_numbers), key=lambda x: (''.join(ch for ch in x if ch.isdigit()) == "", x))
+    unique_trains = list(dict.fromkeys(train_numbers))
 
     # Wiersze bazujemy na mapie stacji z wybranego arkusza, posortowane po km rosnąco
     station_maps = st.session_state.get("station_maps", {})
     active_station_map = station_maps.get(selected_sheet, station_map)
     station_items = sorted(active_station_map.items(), key=lambda kv: kv[1])
 
-    # Zbuduj strukturę: {(station, km): {train_number: time_display}} tylko dla wybranego arkusza
+    # Zbuduj strukturę: {(station, km): {train_number: {"p": val, "o": val}}} tylko dla wybranego arkusza
     cell_map = {}
     for rec in trains_active:
         key = (rec["station"], float(rec["km"]))
@@ -236,17 +278,36 @@ if station_map and sheets_data:
             display_val = format_time_hhmm(tdec)
         else:
             display_val = str(rec.get("time") or "")
-        bucket[str(rec["train_number"]) ] = display_val
+        stop_type = rec.get("stop_type", "p")  # non-dual defaults to "p"
+        bucket.setdefault(str(rec["train_number"]), {})[stop_type] = display_val
+
+    # Wykryj stacje z podwójnym wpisem (przyjazd + odjazd)
+    dual_stations = set()
+    for key, times_dict in cell_map.items():
+        if any("o" in v for v in times_dict.values()):
+            dual_stations.add(key)
 
     # Render: tabela
     import pandas as pd
     table_rows = []
     for station, km in ((name, km) for name, km in station_items):
-        row = {"km": f"{km:.3f}", "stacja": station}
         times = cell_map.get((station, float(km)), {})
-        for tn in unique_trains:
-            row[tn] = times.get(tn, "")
-        table_rows.append(row)
+        if (station, float(km)) in dual_stations:
+            # Wiersz przyjazdu (p)
+            row_p = {"km": f"{km:.3f}", "stacja": f"{station} (p)", "_station_raw": station, "_stop_type": "p"}
+            for tn in unique_trains:
+                row_p[tn] = times.get(tn, {}).get("p", "")
+            table_rows.append(row_p)
+            # Wiersz odjazdu (o)
+            row_o = {"km": f"{km:.3f}", "stacja": f"{station} (o)", "_station_raw": station, "_stop_type": "o"}
+            for tn in unique_trains:
+                row_o[tn] = times.get(tn, {}).get("o", "")
+            table_rows.append(row_o)
+        else:
+            row = {"km": f"{km:.3f}", "stacja": station, "_station_raw": station, "_stop_type": None}
+            for tn in unique_trains:
+                row[tn] = times.get(tn, {}).get("p", "")
+            table_rows.append(row)
 
     df_view = pd.DataFrame(table_rows)
 
@@ -272,7 +333,7 @@ if station_map and sheets_data:
             station_name = rec["station"]
             tn = str(rec["train_number"])
             station_bucket = station_to_train.setdefault(station_name, {})
-            station_bucket[tn] = rec.get("time_decimal")
+            station_bucket.setdefault(tn, []).append(rec.get("time_decimal"))
         sheet_to_station_train[sheet] = station_to_train
         sheet_to_trains[sheet] = sorted({ str(t["train_number"]) for t in trains })
 
@@ -284,18 +345,21 @@ if station_map and sheets_data:
         for tn in sheet_to_trains.get(sheet, []):
             pts = []
             for station_name, km_selected in station_items:
-                t_dec = station_to_train.get(station_name, {}).get(tn)
-                if t_dec is None:
+                times_list = station_to_train.get(station_name, {}).get(tn)
+                if not times_list:
                     continue
-                ms = hours_to_ms(t_dec)
-                pts.append({
-                    "value": [ms, float(km_selected)],
-                    "station": station_name,
-                    "train": tn,
-                    "sheet": sheet,
-                })
-                global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
-                global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
+                for t_dec in times_list:
+                    if t_dec is None:
+                        continue
+                    ms = hours_to_ms(t_dec)
+                    pts.append({
+                        "value": [ms, float(km_selected)],
+                        "station": station_name,
+                        "train": tn,
+                        "sheet": sheet,
+                    })
+                    global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
+                    global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
             if pts:
                 # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
                 series.append({"name": f"{tn} ({sheet})", "points": pts})
@@ -427,7 +491,7 @@ if station_map and sheets_data:
         st.session_state[grid_nonce_key] = 0
     # Zbuduj columnDefs i wywołaj custom component
     import pandas as pd
-    train_cols = [c for c in df_view.columns if c not in ("km", "stacja")]
+    train_cols = [c for c in df_view.columns if c not in ("km", "stacja", "_station_raw", "_stop_type")]
     column_defs = (
         [
             {"field": "km", "headerName": "km", "editable": False, "width": 60},
@@ -450,26 +514,32 @@ if station_map and sheets_data:
     # Obsługa eventów z komponentu
     if evt and isinstance(evt, dict) and evt.get("type") == "cellDoubleClick":
         col_id = str(evt.get("field") or "")
-        if col_id and col_id not in ("km", "stacja"):
+        if col_id and col_id not in ("km", "stacja", "_station_raw", "_stop_type"):
             row = evt.get("row") or {}
-            station_clicked = str(row.get("stacja") or "")
+            # Użyj ukrytych pól do identyfikacji stacji i typu postoju
+            station_clicked = str(row.get("_station_raw") or row.get("stacja") or "")
+            _stop_type_clicked = row.get("_stop_type")  # "p", "o", or None
             try:
                 km_clicked = float(str(row.get("km") or "0").replace(",", "."))
             except Exception:
                 km_clicked = 0.0
 
-            # Ustal domyślną godzinę z danych
-            current_time_str = cell_map.get((station_clicked, float(km_clicked)), {}).get(col_id, "")
+            # Ustal domyślną godzinę z danych (cell_map przechowuje dict z kluczami "p"/"o")
+            _lookup_slot = _stop_type_clicked if _stop_type_clicked else "p"
+            current_time_str = cell_map.get((station_clicked, float(km_clicked)), {}).get(col_id, {}).get(_lookup_slot, "")
             parsed = parse_time(current_time_str) if current_time_str else None
             default_time = _decimal_to_time(parsed) if parsed is not None else dt.time(0, 0)
 
             _day_offset_grid = int(parsed // 24) if parsed is not None else 0
 
+            # Etykieta stacji do wyświetlenia w dialogu
+            _station_label = str(row.get("stacja") or station_clicked)
+
             # Modal dialog edycji czasu (wymaga Streamlit 1.34+)
             try:
                 @_dialog_decorator("Edycja czasu")
                 def time_dialog():
-                    st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
+                    st.write(f"Stacja: {_station_label}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                     t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"dlg_time_{selected_sheet}")
                     # Checkbox propagacji tylko jeśli istniała poprzednia wartość czasu (mamy parsed)
                     allow_propagate = parsed is not None
@@ -485,7 +555,7 @@ if station_map and sheets_data:
                             else:
                                 delta_hours = 0.0
 
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid)
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
                             if prop and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             st.session_state[grid_nonce_key] += 1
@@ -493,7 +563,7 @@ if station_map and sheets_data:
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"dlg_clear_{selected_sheet}"):
-                            clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
+                            clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state, stop_type=_stop_type_clicked)
                             st.session_state[grid_nonce_key] += 1
                             st.session_state[plot_nonce_key] += 1
                             st.rerun()
@@ -508,7 +578,7 @@ if station_map and sheets_data:
                 # Fallback: panel zamiast modala
                 st.warning(f"Nie udało się otworzyć okna dialogowego: {e}")
                 with st.container(border=True):
-                    st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
+                    st.write(f"Stacja: {_station_label}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                     t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"fallback_time_{selected_sheet}")
                     allow_propagate_fb = parsed is not None
                     prop_fb = st.checkbox("Uwzględnij zmianę na dalszej części trasy", value=True, disabled=not allow_propagate_fb, key=f"fallback_prop_{selected_sheet}")
@@ -521,7 +591,7 @@ if station_map and sheets_data:
                                 delta_hours = new_dec - parsed_norm
                             else:
                                 delta_hours = 0.0
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid)
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
                             if prop_fb and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             st.session_state[grid_nonce_key] += 1
@@ -529,7 +599,7 @@ if station_map and sheets_data:
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"fallback_clear_{selected_sheet}"):
-                            clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state)
+                            clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state, stop_type=_stop_type_clicked)
                             st.session_state[grid_nonce_key] += 1
                             st.session_state[plot_nonce_key] += 1
                             st.rerun()
