@@ -388,6 +388,8 @@ if station_map and sheets_data:
                     global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
                     global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
             if pts:
+                # Sortuj punkty po czasie, aby linia nie cofała się przy stacjach dualnych
+                pts.sort(key=lambda p: p["value"][0])
                 # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
                 series.append({"name": f"{tn} ({sheet})", "points": pts})
 
