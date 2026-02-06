@@ -108,6 +108,16 @@ def parse_time(value) -> Optional[float]:
             return None
     return None
 
+def format_time_hhmm(t: float) -> str:
+    """Convert decimal hours to bare 'HH:MM' (no day suffix)."""
+    h = int(t) % 24
+    m = int(round((t % 1) * 60))
+    if m == 60:
+        h = (h + 1) % 24
+        m = 0
+    return f"{h:02d}:{m:02d}"
+
+
 def format_time_decimal(t: float) -> str:
     """Convert decimal hours to 'HH:MM' with optional +N days."""
     days = int(t // 24)

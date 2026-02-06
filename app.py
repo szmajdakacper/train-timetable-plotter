@@ -4,7 +4,7 @@ import hashlib
 
 from excel_loader import read_and_store_in_session
 from table_editor import save_cell_time, clear_cell_time, propagate_time_shift
-from utils import parse_time
+from utils import parse_time, format_time_hhmm
 from train_grid_component.backend.train_grid_component import train_grid
 from train_plot_component.backend.train_plot_component import train_plot
 
@@ -23,7 +23,7 @@ if uploaded_file:
         except Exception:
             pass
         file_bytes = uploaded_file.getvalue()
-        file_hash = hashlib.md5(file_bytes).hexdigest()
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
         if st.session_state.get("uploaded_hash") != file_hash:
             read_and_store_in_session(file_bytes, st.session_state)
             st.session_state["uploaded_hash"] = file_hash
@@ -64,19 +64,13 @@ if station_map and sheets_data:
 
         def _hhmm_from_any(val: any) -> str:
             try:
-                # Jeśli dostajemy time_decimal (float w godzinach), nie używaj parse_time
                 if isinstance(val, (int, float)):
                     d = float(val)
                 else:
                     d = parse_time(val)
                 if d is None:
                     return ""
-                h = int(d) % 24
-                m = int(round((d % 1) * 60))
-                if m == 60:
-                    h = (h + 1) % 24
-                    m = 0
-                return f"{h:02d}:{m:02d}"
+                return format_time_hhmm(d)
             except Exception:
                 return ""
 
@@ -182,16 +176,10 @@ if station_map and sheets_data:
         except Exception:
             tdec = None
         if tdec is None:
-            from utils import parse_time
             parsed = parse_time(rec.get("time"))
             tdec = float(parsed) if parsed is not None else None
         if tdec is not None:
-            hh = int(tdec) % 24
-            mm = int(round((tdec % 1) * 60))
-            if mm == 60:
-                hh = (hh + 1) % 24
-                mm = 0
-            display_val = f"{hh:02d}:{mm:02d}"
+            display_val = format_time_hhmm(tdec)
         else:
             display_val = str(rec.get("time") or "")
         bucket[str(rec["train_number"]) ] = display_val
@@ -351,8 +339,27 @@ if station_map and sheets_data:
                         st.rerun()
 
             time_dialog_plot()
-        except Exception:
-            pass
+        except Exception as e:
+            # Fallback: panel zamiast modala
+            st.warning(f"Nie udało się otworzyć okna dialogowego wykresu: {e}")
+            with st.container(border=True):
+                st.write(f"Arkusz: {sheet_clicked}  •  Stacja: {station_clicked}  •  km: {km_sheet_clicked:.3f}  •  Pociąg: {col_id}")
+                t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"fallback_time_plot_{sheet_clicked}")
+                c1, c2, c3 = st.columns([1,1,1])
+                with c1:
+                    if st.button("Zapisz", type="primary", key=f"fallback_save_plot_{sheet_clicked}"):
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state)
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
+                with c2:
+                    if st.button("Usuń postój", key=f"fallback_clear_plot_{sheet_clicked}"):
+                        clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state)
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
+                with c3:
+                    if st.button("Anuluj", key=f"fallback_cancel_plot_{sheet_clicked}"):
+                        st.session_state[plot_nonce_key] += 1
+                        st.rerun()
 
     st.subheader("Tabela: km – stacja – pociągi")
     st.caption(f"Arkusz: {selected_sheet}")
@@ -434,8 +441,9 @@ if station_map and sheets_data:
                             st.rerun()
 
                 time_dialog()
-            except Exception:
+            except Exception as e:
                 # Fallback: panel zamiast modala
+                st.warning(f"Nie udało się otworzyć okna dialogowego: {e}")
                 with st.container(border=True):
                     st.write(f"Stacja: {station_clicked}  •  km: {km_clicked:.3f}  •  Pociąg: {col_id}")
                     t = st.time_input("Godzina", value=default_time, step=dt.timedelta(minutes=1), key=f"fallback_time_{selected_sheet}")
