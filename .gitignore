@@ -46,3 +46,8 @@ coverage/
 # VSCode (keep extensions.json)
 .vscode/*
 !.vscode/extensions.json
+
+# Screenshots & example data
+zrzut_ekranu/
+Zrzut_ekranu/
+example_table/
