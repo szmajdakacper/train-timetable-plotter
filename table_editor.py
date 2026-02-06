@@ -125,12 +125,16 @@ def save_cell_time(
     time_value: _dt.time,
     session_state: Any,
     day_offset: int = 0,
+    stop_type: Optional[str] = None,
 ) -> None:
     """Save a single cell time into session_state for the given sheet.
 
     If record exists, it is updated; otherwise it is created.
     ``day_offset`` adds full days (24 h each) to the stored decimal so that
     midnight-crossing times are preserved correctly.
+    ``stop_type`` selects which record to update when multiple records share
+    the same (station, km, train_number) key ("p" = arrival, "o" = departure,
+    None = non-dual station).
     """
     sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
@@ -150,40 +154,27 @@ def save_cell_time(
     decimal = h + m / 60 + s / 3600 + day_offset * 24
     canonical = format_time_decimal(float(decimal))
 
-    # (debug usunięty)
-
-    found_index = None
-    for idx, r in enumerate(trains_list):
-        if rec_key(r) == key:
-            r["time"] = canonical
-            r["time_decimal"] = float(decimal)
-            found_index = idx
+    # Find matching record by stop_type
+    target_idx = None
+    for i, r in enumerate(trains_list):
+        if rec_key(r) == key and r.get("stop_type") == stop_type:
+            target_idx = i
             break
 
-    if found_index is None:
-        updated_rec = {
+    if target_idx is not None:
+        trains_list[target_idx]["time"] = canonical
+        trains_list[target_idx]["time_decimal"] = float(decimal)
+    else:
+        new_rec = {
             "train_number": str(train_number),
             "station": station,
             "km": float(km),
             "time": canonical,
             "time_decimal": float(decimal),
         }
-        trains_list.append(updated_rec)
-    else:
-        # Przenieś zaktualizowany rekord na koniec i usuń pozostałe duplikaty tego klucza
-        try:
-            updated_rec = trains_list[found_index]
-            remainder = [r for i, r in enumerate(trains_list) if rec_key(r) != key or i == found_index]
-            base = [r for i, r in enumerate(remainder) if rec_key(r) != key or i == found_index]
-        except Exception:
-            updated_rec = trains_list[found_index]
-            base = [r for i, r in enumerate(trains_list) if i != found_index and rec_key(r) != key]
-        # Usuń wszystkie o tym samym kluczu, zachowaj jeden zaktualizowany na końcu
-        base = [r for r in trains_list if rec_key(r) != key]
-        base.append(updated_rec)
-        trains_list[:] = base
-
-    # (debug usunięty)
+        if stop_type is not None:
+            new_rec["stop_type"] = stop_type
+        trains_list.append(new_rec)
 
     active["trains"] = trains_list
     for i, s in enumerate(sheets_data):
@@ -199,8 +190,14 @@ def clear_cell_time(
     km: float,
     train_number: str,
     session_state: Any,
+    stop_type: Optional[str] = None,
 ) -> None:
-    """Clear a single cell time (remove record) in session_state for the given sheet."""
+    """Clear a single cell time (remove record) in session_state for the given sheet.
+
+    ``stop_type`` selects which record to remove when multiple records share
+    the same (station, km, train_number) key ("p" = arrival, "o" = departure,
+    None = non-dual station).
+    """
     sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
     if active is None:
@@ -212,8 +209,16 @@ def clear_cell_time(
     def rec_key(r: Dict[str, any]) -> Tuple[str, float, str]:
         return (r["station"], float(r["km"]), str(r["train_number"]))
 
-    new_list = [r for r in trains_list if rec_key(r) != key]
-    active["trains"] = new_list
+    target_idx = None
+    for i, r in enumerate(trains_list):
+        if rec_key(r) == key and r.get("stop_type") == stop_type:
+            target_idx = i
+            break
+
+    if target_idx is not None:
+        del trains_list[target_idx]
+
+    active["trains"] = trains_list
     for i, s in enumerate(sheets_data):
         if s.get("sheet") == selected_sheet:
             sheets_data[i] = active
