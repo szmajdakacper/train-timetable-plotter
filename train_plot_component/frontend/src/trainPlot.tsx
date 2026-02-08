@@ -24,6 +24,8 @@ type TrainPlotArgs = {
 };
 
 class TrainPlot extends StreamlitComponentBase {
+  private echartsRef: any = null;
+
   private getFrameHeight = (): number => {
     const { height = 420 } = (this.props.args as TrainPlotArgs) || {};
     return height + 24;
@@ -127,37 +129,65 @@ class TrainPlot extends StreamlitComponentBase {
         splitLine: { show: true },
         axisPointer: { show: false },
       },
-      // Dorysujemy markery stacji jako markLine na osi Y
-      dataZoom: [
-        { type: "inside", xAxisIndex: 0, filterMode: "none" },
-        {
-          type: "slider",
-          xAxisIndex: 0,
-          height: 30,
-          bottom: 25,
-          startValue: xMinMs ?? undefined,
-          endValue: xMaxMs ?? undefined,
-          labelFormatter: (value: any) => fmtTime(value),
-          filterMode: "none",
-        },
-        // Y-axis zoom (inside + slider)
-        { type: "inside", yAxisIndex: 0, filterMode: "none" },
-        {
-          type: "slider",
-          yAxisIndex: 0,
-          orient: "vertical",
-          right: 10,
-          top: 24,
-          bottom: 90,
-          startValue: yMin,
-          endValue: yMax,
-          labelFormatter: (v: any) => {
-            const n = typeof v === "number" ? v : Number(v);
-            return isFinite(n) ? n.toFixed(3) : "";
+      dataZoom: (() => {
+        // Restore zoom (try parent window first, then sessionStorage)
+        let savedZoom: { xStart: number; xEnd: number; yStart: number; yEnd: number } | null = null;
+        try {
+          const saved = (window.parent as any).__trainplotZoom;
+          if (saved && saved.xMin === xMinMs && saved.xMax === xMaxMs) {
+            savedZoom = saved;
+          }
+        } catch { /* cross-origin */ }
+        if (!savedZoom) {
+          try {
+            const raw = sessionStorage.getItem("trainplot_zoom");
+            if (raw) {
+              const saved = JSON.parse(raw);
+              if (saved && saved.xMin === xMinMs && saved.xMax === xMaxMs) {
+                savedZoom = saved;
+              }
+            }
+          } catch { /* noop */ }
+        }
+
+        return [
+          {
+            type: "inside", xAxisIndex: 0, filterMode: "none",
+            ...(savedZoom ? { start: savedZoom.xStart, end: savedZoom.xEnd } : {}),
           },
-          filterMode: "none",
-        },
-      ],
+          {
+            type: "slider",
+            xAxisIndex: 0,
+            height: 30,
+            bottom: 25,
+            ...(savedZoom
+              ? { start: savedZoom.xStart, end: savedZoom.xEnd }
+              : { startValue: xMinMs ?? undefined, endValue: xMaxMs ?? undefined }),
+            labelFormatter: (value: any) => fmtTime(value),
+            filterMode: "none",
+          },
+          {
+            type: "inside", yAxisIndex: 0, filterMode: "none",
+            ...(savedZoom ? { start: savedZoom.yStart, end: savedZoom.yEnd } : {}),
+          },
+          {
+            type: "slider",
+            yAxisIndex: 0,
+            orient: "vertical",
+            right: 10,
+            top: 24,
+            bottom: 90,
+            ...(savedZoom
+              ? { start: savedZoom.yStart, end: savedZoom.yEnd }
+              : { startValue: yMin, endValue: yMax }),
+            labelFormatter: (v: any) => {
+              const n = typeof v === "number" ? v : Number(v);
+              return isFinite(n) ? n.toFixed(3) : "";
+            },
+            filterMode: "none",
+          },
+        ];
+      })(),
       series: echartsSeries,
     };
 
@@ -174,6 +204,23 @@ class TrainPlot extends StreamlitComponentBase {
     // wysokość ustawiana w lifecycle; brak wywołań w renderze
 
     const onEvents: Record<string, (p: any) => void> = {};
+
+    // Save zoom state (parent window + sessionStorage fallback)
+    onEvents.datazoom = () => {
+      try {
+        const instance = this.echartsRef?.getEchartsInstance();
+        if (!instance) return;
+        const dz = instance.getOption().dataZoom;
+        if (!Array.isArray(dz) || dz.length < 4) return;
+        const zoom = {
+          xMin: xMinMs, xMax: xMaxMs,
+          xStart: dz[1].start, xEnd: dz[1].end,
+          yStart: dz[3].start, yEnd: dz[3].end,
+        };
+        try { (window.parent as any).__trainplotZoom = zoom; } catch { /* cross-origin */ }
+        try { sessionStorage.setItem("trainplot_zoom", JSON.stringify(zoom)); } catch { /* noop */ }
+      } catch { /* noop */ }
+    };
 
     if (colorMode) {
       // In color mode: single click sends pointClick, no dblclick
@@ -226,7 +273,7 @@ class TrainPlot extends StreamlitComponentBase {
 
     return (
       <div style={{ width: "100%", height, background: "#f7f2e8", borderRadius: 8, overflow: "hidden" }}>
-        <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: "100%" }} onEvents={onEvents} />
+        <ReactEChartsCore ref={(e: any) => { this.echartsRef = e; }} echarts={echarts} option={option} style={{ width: "100%", height: "100%" }} onEvents={onEvents} />
       </div>
     );
   };
