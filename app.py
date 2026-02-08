@@ -279,6 +279,53 @@ if station_map and sheets_data:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
+    # --- Narzędzie koloru pociągów ---
+    if "train_colors" not in st.session_state:
+        st.session_state["train_colors"] = {}
+    if "active_color" not in st.session_state:
+        st.session_state["active_color"] = None
+
+    _COLOR_PALETTE = [
+        ("Czerwony", "#e6194b"),
+        ("Niebieski", "#4363d8"),
+        ("Zielony", "#3cb44b"),
+        ("Pomarańczowy", "#f58231"),
+        ("Fioletowy", "#911eb4"),
+        ("Żółty", "#ffe119"),
+        ("Czarny", "#000000"),
+    ]
+
+    with st.container(border=True):
+        st.markdown("**Narzędzie koloru**")
+        _cc = st.columns(len(_COLOR_PALETTE) + 2)
+        for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
+            with _cc[idx]:
+                _swatch = f'<div style="width:100%;height:8px;background:{hexc};border-radius:3px;margin-bottom:4px"></div>'
+                st.markdown(_swatch, unsafe_allow_html=True)
+                _btn_type = "primary" if st.session_state["active_color"] == hexc else "secondary"
+                if st.button(name, key=f"color_btn_{hexc}", type=_btn_type):
+                    st.session_state["active_color"] = hexc
+                    st.rerun()
+        # "Brak koloru" — deaktywacja narzędzia
+        with _cc[len(_COLOR_PALETTE)]:
+            _btn_type_none = "primary" if st.session_state["active_color"] is None else "secondary"
+            if st.button("Brak koloru", key="color_btn_none", type=_btn_type_none):
+                st.session_state["active_color"] = None
+                st.rerun()
+        # "Wyczyść kolory" — reset wszystkich kolorów
+        with _cc[len(_COLOR_PALETTE) + 1]:
+            if st.button("Wyczyść kolory", key="color_btn_clear"):
+                st.session_state["train_colors"] = {}
+                st.session_state["active_color"] = None
+                # Incrementuj nonce żeby odświeżyć komponenty
+                for _nk in list(st.session_state.keys()):
+                    if _nk.startswith("plot_nonce_") or _nk.startswith("grid_nonce_"):
+                        st.session_state[_nk] += 1
+                st.rerun()
+
+    _active_color = st.session_state["active_color"]
+    _train_colors = st.session_state["train_colors"]
+
     # Zbuduj kolumny pociągów (tylko z wybranego arkusza)
     train_numbers = [str(t["train_number"]) for t in trains_active]
     unique_trains = list(dict.fromkeys(train_numbers))
@@ -399,10 +446,13 @@ if station_map and sheets_data:
     x_min = max(0, (global_min_ms or 0) - pad_left)
     x_max = (global_max_ms or (24 * 3600 * 1000)) + pad_right
 
-    # Nonce do resetu komponentu wykresu po akcji w modalu
+    # Nonce do resetu komponentu wykresu i siatki po akcji w modalu
     plot_nonce_key = f"plot_nonce_{selected_sheet}"
     if plot_nonce_key not in st.session_state:
         st.session_state[plot_nonce_key] = 0
+    grid_nonce_key = f"grid_nonce_{selected_sheet}"
+    if grid_nonce_key not in st.session_state:
+        st.session_state[grid_nonce_key] = 0
 
     evt_plot = train_plot(
         y_stations=y_stations,
@@ -411,11 +461,26 @@ if station_map and sheets_data:
         x_max_ms=x_max,
         key=f"plot_{selected_sheet}_{st.session_state[plot_nonce_key]}",
         height=int(plot_height or 600),
+        train_colors=_train_colors,
+        color_mode=(_active_color is not None),
     )
 
 
+    # Obsługa single-click z wykresu (tryb koloru)
+    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointClick" and _active_color is not None:
+        _click_train = str(evt_plot.get("train") or "")
+        if _click_train:
+            if _active_color == "#000000":
+                _train_colors.pop(_click_train, None)
+            else:
+                _train_colors[_click_train] = _active_color
+            st.session_state["train_colors"] = _train_colors
+            st.session_state[plot_nonce_key] += 1
+            st.session_state[grid_nonce_key] += 1
+            st.rerun()
+
     # Obsługa dblclick z wykresu (edycja czasu w dowolnym arkuszu)
-    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointDoubleClick":
+    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointDoubleClick" and not _active_color:
         try:
             col_id = str(evt_plot.get("train") or "")
             station_clicked = str(evt_plot.get("station") or "")
@@ -531,10 +596,6 @@ if station_map and sheets_data:
     st.subheader("Tabela: km – stacja – pociągi")
     st.caption(f"Arkusz: {selected_sheet}")
 
-    # Nonce do wymuszenia resetu siatki po akcji w modalu
-    grid_nonce_key = f"grid_nonce_{selected_sheet}"
-    if grid_nonce_key not in st.session_state:
-        st.session_state[grid_nonce_key] = 0
     # Zbuduj columnDefs i wywołaj custom component
     import pandas as pd
     train_cols = [c for c in df_view.columns if c not in ("km", "stacja", "_station_raw", "_stop_type")]
@@ -555,10 +616,25 @@ if station_map and sheets_data:
         key=f"grid_{selected_sheet}_{st.session_state[grid_nonce_key]}",
         height=grid_height,
         theme="ag-theme-alpine",
+        train_colors=_train_colors,
+        color_mode=(_active_color is not None),
     )
 
+    # Obsługa single-click z tabeli (tryb koloru)
+    if evt and isinstance(evt, dict) and evt.get("type") == "cellClick" and _active_color is not None:
+        _click_field = str(evt.get("field") or "")
+        if _click_field and _click_field not in ("km", "stacja", "_station_raw", "_stop_type"):
+            if _active_color == "#000000":
+                _train_colors.pop(_click_field, None)
+            else:
+                _train_colors[_click_field] = _active_color
+            st.session_state["train_colors"] = _train_colors
+            st.session_state[plot_nonce_key] += 1
+            st.session_state[grid_nonce_key] += 1
+            st.rerun()
+
     # Obsługa eventów z komponentu
-    if evt and isinstance(evt, dict) and evt.get("type") == "cellDoubleClick":
+    if evt and isinstance(evt, dict) and evt.get("type") == "cellDoubleClick" and not _active_color:
         col_id = str(evt.get("field") or "")
         if col_id and col_id not in ("km", "stacja", "_station_raw", "_stop_type"):
             row = evt.get("row") or {}

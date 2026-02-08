@@ -19,6 +19,8 @@ type TrainPlotArgs = {
   xMinMs?: number | null;
   xMaxMs?: number | null;
   height?: number;
+  trainColors?: Record<string, string>;
+  colorMode?: boolean;
 };
 
 class TrainPlot extends StreamlitComponentBase {
@@ -41,7 +43,8 @@ class TrainPlot extends StreamlitComponentBase {
     }
   }
   public render = () => {
-    const { yStations = [], series = [], xMinMs, xMaxMs, height = 420 } = (this.props.args as TrainPlotArgs) || {};
+    const { yStations = [], series = [], xMinMs, xMaxMs, height = 420,
+            trainColors = {}, colorMode = false } = (this.props.args as TrainPlotArgs) || {};
 
     const fmtTime = (msInDay: number): string => {
       const dayMs = 24 * 60 * 60 * 1000;
@@ -52,18 +55,22 @@ class TrainPlot extends StreamlitComponentBase {
       return `${hh}:${mm}`;
     };
 
-    const echartsSeries = series.map(s => ({
-      name: s.name,
-      type: "line" as const,
-      showSymbol: true,
-      symbolSize: 5,
-      smooth: false,
-      // Każdy punkt może być tablicą [ms, km] lub obiektem { value:[ms, km], station, sheet, train }
-      data: s.points,
-      lineStyle: { color: "#000", width: 1.5 },
-      itemStyle: { color: "#000" },
-      tooltip: { trigger: "item" },
-    }));
+    const echartsSeries = series.map(s => {
+      // Extract train number from series name (strip " (sheetName)" suffix)
+      const trainNum = s.name.replace(/ \([^)]+\)$/, "");
+      const color = trainColors[trainNum] || "#000";
+      return {
+        name: s.name,
+        type: "line" as const,
+        showSymbol: true,
+        symbolSize: 5,
+        smooth: false,
+        data: s.points,
+        lineStyle: { color, width: 1.5 },
+        itemStyle: { color },
+        tooltip: { trigger: "item" },
+      };
+    });
 
     const kmValues = Array.isArray(yStations) && yStations.length > 0 ? yStations.map(s => (s as any).km as number) : [];
     const yMin = kmValues.length ? Math.min(...kmValues) : undefined;
@@ -166,8 +173,24 @@ class TrainPlot extends StreamlitComponentBase {
 
     // wysokość ustawiana w lifecycle; brak wywołań w renderze
 
-    const onEvents = {
-      dblclick: (p: any) => {
+    const onEvents: Record<string, (p: any) => void> = {};
+
+    if (colorMode) {
+      // In color mode: single click sends pointClick, no dblclick
+      onEvents.click = (p: any) => {
+        try {
+          if (!p || p.componentType !== "series") return;
+          const raw = p.data;
+          const train = (raw?.train ?? p.seriesName?.replace(/ \([^)]+\)$/, "")) || "";
+          Streamlit.setComponentValue({
+            type: "pointClick",
+            train,
+          });
+        } catch { /* noop */ }
+      };
+    } else {
+      // Normal mode: dblclick sends pointDoubleClick
+      onEvents.dblclick = (p: any) => {
         try {
           if (!p || p.componentType !== "series") return;
           const raw = p.data;
@@ -198,8 +221,8 @@ class TrainPlot extends StreamlitComponentBase {
             sheet,
           });
         } catch { /* noop */ }
-      }
-    } as any;
+      };
+    }
 
     return (
       <div style={{ width: "100%", height, background: "#f7f2e8", borderRadius: 8, overflow: "hidden" }}>
@@ -210,5 +233,3 @@ class TrainPlot extends StreamlitComponentBase {
 }
 
 export default withStreamlitConnection(TrainPlot);
-
-

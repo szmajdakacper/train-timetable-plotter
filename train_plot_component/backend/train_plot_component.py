@@ -18,7 +18,8 @@ else:
     )
 
 
-def train_plot(y_stations, series, x_min_ms=None, x_max_ms=None, key=None, height=420):
+def train_plot(y_stations, series, x_min_ms=None, x_max_ms=None, key=None, height=420,
+               train_colors=None, color_mode=False):
     """
     Renderuje wykres tras pociągów (ECharts).
 
@@ -29,6 +30,8 @@ def train_plot(y_stations, series, x_min_ms=None, x_max_ms=None, key=None, heigh
         x_max_ms: int | None - maksymalny czas w ms (oś X)
         key: unikalny klucz komponentu
         height: wysokość w px
+        train_colors: dict mapping train_number -> hex color
+        color_mode: bool — when True, single clicks send pointClick events
 
     Returns: None | dict (np. eventy kliknięć w przyszłości)
     """
@@ -38,6 +41,8 @@ def train_plot(y_stations, series, x_min_ms=None, x_max_ms=None, key=None, heigh
         xMinMs=x_min_ms,
         xMaxMs=x_max_ms,
         height=height,
+        trainColors=train_colors or {},
+        colorMode=color_mode,
         key=key,
         default=None,
     )

@@ -18,7 +18,8 @@ else:
     )
 
 
-def train_grid(row_data, column_defs, key=None, height=400, theme="ag-theme-alpine"):
+def train_grid(row_data, column_defs, key=None, height=400, theme="ag-theme-alpine",
+               train_colors=None, color_mode=False):
     """
     Wyświetla siatkę AG Grid jako komponent Streamlit i zwraca zdarzenia.
 
@@ -28,6 +29,8 @@ def train_grid(row_data, column_defs, key=None, height=400, theme="ag-theme-alpi
         key: dowolny klucz unikalny w obrębie strony
         height: wysokość w px
         theme: klasa motywu AG Grid (np. "ag-theme-alpine")
+        train_colors: dict mapping train_number -> hex color
+        color_mode: bool — when True, single clicks send cellClick events
 
     Returns:
         dict | None: np. {"type": "cellDoubleClick", "field": str, "row": dict}
@@ -37,6 +40,8 @@ def train_grid(row_data, column_defs, key=None, height=400, theme="ag-theme-alpi
         columnDefs=column_defs,
         height=height,
         theme=theme,
+        trainColors=train_colors or {},
+        colorMode=color_mode,
         key=key,
         default=None,
     )
