@@ -305,12 +305,12 @@ if station_map and sheets_data:
                 if st.button(name, key=f"color_btn_{hexc}", use_container_width=True):
                     st.session_state["active_color"] = hexc
                     st.rerun()
-        # "Brak koloru" — deaktywacja narzędzia
+        # "Gotowe" — deaktywacja narzędzia (widoczny tylko gdy kolor aktywny)
         with _cc[len(_COLOR_PALETTE)]:
-            _btn_type_none = "primary" if st.session_state["active_color"] is None else "secondary"
-            if st.button("Brak koloru", key="color_btn_none", type=_btn_type_none, use_container_width=True):
-                st.session_state["active_color"] = None
-                st.rerun()
+            if st.session_state["active_color"] is not None:
+                if st.button("Gotowe", key="color_btn_none", type="primary", use_container_width=True):
+                    st.session_state["active_color"] = None
+                    st.rerun()
         # "Wyczyść kolory" — reset wszystkich kolorów
         with _cc[len(_COLOR_PALETTE) + 1]:
             if st.button("Wyczyść kolory", key="color_btn_clear", use_container_width=True):
@@ -340,10 +340,10 @@ if station_map and sheets_data:
 **Dodatkowe opcje:**
 
 - **Czarny** — resetuje kolor pociągu do domyślnego (czarnego).
-- **Brak koloru** — wyłącza narzędzie; kliknięcia znów otwierają okno edycji czasu.
+- **Gotowe** — kończy kolorowanie; kliknięcia znów otwierają okno edycji czasu.
 - **Wyczyść kolory** — usuwa wszystkie przypisane kolory.
 
-**Uwaga:** Gdy narzędzie koloru jest aktywne, podwójne kliknięcie (edycja czasu) jest zablokowane. Aby wrócić do edycji, kliknij „Brak koloru".
+**Uwaga:** Gdy narzędzie koloru jest aktywne, edycja czasu jest zablokowana. Aby wrócić do edycji, kliknij „Gotowe".
 """)
                 if st.button("Zamknij", key="color_help_close", type="primary"):
                     st.session_state["_show_color_help"] = False
