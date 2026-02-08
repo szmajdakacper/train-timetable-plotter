@@ -92,6 +92,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Zachowaj pozycję scrolla po st.rerun() (np. po zamknięciu dialogu)
+st.markdown("""
+<script>
+(function() {
+    const key = 'stScrollPos';
+    const main = window.parent.document.querySelector('section.main');
+    if (!main) return;
+    const saved = sessionStorage.getItem(key);
+    if (saved) {
+        main.scrollTop = parseInt(saved, 10);
+        sessionStorage.removeItem(key);
+    }
+    main.addEventListener('scroll', function() {
+        sessionStorage.setItem(key, String(main.scrollTop));
+    });
+})();
+</script>
+""", unsafe_allow_html=True)
+
 st.title("Rozkład Jazdy - wykresy z tabeli")
 
 uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx)", type=["xlsx"])
