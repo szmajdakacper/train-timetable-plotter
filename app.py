@@ -295,43 +295,13 @@ if station_map and sheets_data:
         ("Czarny", "#000000"),
     ]
 
-    # Styl paska kolorów: tło w kolorze + mruganie aktywnego
-    # Selektor :has() na stColumn — każda kolumna zawiera marker [data-color],
-    # więc styl trafia dokładnie w przycisk w tej samej kolumnie.
     _LIGHT_COLORS = {"#ffe119"}
-    _color_css = "\n".join(
-        f'[data-testid="stColumn"]:has([data-color="{hx}"]) button {{\n'
-        f'  background-color: {hx} !important;\n'
-        f'  color: {"#1a1a1a" if hx in _LIGHT_COLORS else "#fff"} !important;\n'
-        f'  border: 2px solid {hx} !important;\n'
-        f'  border-radius: 8px !important;\n'
-        f'}}\n'
-        f'[data-testid="stColumn"]:has([data-color="{hx}"]) button:hover {{\n'
-        f'  filter: brightness(1.15);\n'
-        f'}}'
-        for _, hx in _COLOR_PALETTE
-    )
-    st.markdown(f"""
-    <style>
-    @keyframes color-blink {{
-        0%, 100% {{ opacity: 1; }}
-        50% {{ opacity: 0.35; }}
-    }}
-    {_color_css}
-    [data-testid="stColumn"]:has(.color-active) button {{
-        animation: color-blink 1.2s ease-in-out infinite;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
 
     with st.container(border=True):
         st.markdown("**Zmień kolor**")
         _cc = st.columns(len(_COLOR_PALETTE) + 3)
         for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
             with _cc[idx]:
-                _is_active = st.session_state["active_color"] == hexc
-                _cls = "color-active" if _is_active else ""
-                st.markdown(f'<div data-color="{hexc}" class="{_cls}" style="display:none"></div>', unsafe_allow_html=True)
                 if st.button(name, key=f"color_btn_{hexc}", use_container_width=True):
                     st.session_state["active_color"] = hexc
                     st.rerun()
@@ -381,6 +351,45 @@ if station_map and sheets_data:
             _color_help_dialog()
         except Exception:
             st.session_state["_show_color_help"] = False
+
+    # Stylowanie przycisków kolorów przez JS (niezależne od wersji Streamlit)
+    _js_map = ", ".join(
+        f"'{n}': ['{h}', '{'#1a1a1a' if h in _LIGHT_COLORS else '#fff'}']"
+        for n, h in _COLOR_PALETTE
+    )
+    _js_active = f"'{st.session_state['active_color']}'" if st.session_state["active_color"] else "null"
+    import streamlit.components.v1 as _stc
+    _stc.html(f"""<script>
+(function() {{
+    var C = {{{_js_map}}};
+    var A = {_js_active};
+    var pd = window.parent.document;
+    if (!pd) return;
+    if (!pd.getElementById('_cba')) {{
+        var s = pd.createElement('style');
+        s.id = '_cba';
+        s.textContent = '@keyframes _cb{{0%,100%{{opacity:1}}50%{{opacity:.35}}}} ._cbtn:hover{{filter:brightness(1.15)}}';
+        pd.head.appendChild(s);
+    }}
+    function go() {{
+        pd.querySelectorAll('button').forEach(function(b) {{
+            var t = b.textContent.trim();
+            var c = C[t];
+            if (!c) return;
+            b.style.backgroundColor = c[0];
+            b.style.color = c[1];
+            b.style.borderColor = c[0];
+            b.style.borderRadius = '8px';
+            b.classList.add('_cbtn');
+            b.style.animation = (A === c[0]) ? '_cb 1.2s ease-in-out infinite' : '';
+        }});
+    }}
+    go();
+    var tid;
+    new MutationObserver(function() {{ clearTimeout(tid); tid = setTimeout(go, 50); }})
+        .observe(pd.body, {{childList: true, subtree: true}});
+}})();
+</script>""", height=0)
 
     _active_color = st.session_state["active_color"]
     _train_colors = st.session_state["train_colors"]
