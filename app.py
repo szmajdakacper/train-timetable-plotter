@@ -295,13 +295,29 @@ if station_map and sheets_data:
         ("Czarny", "#000000"),
     ]
 
+    # Styl: jednakowa szerokość przycisków i pasków koloru
+    st.markdown("""
+    <style>
+    .color-swatch {
+        width: 80px; height: 8px; border-radius: 3px; margin: 0 auto 4px auto;
+    }
+    [data-testid="stHorizontalBlock"].color-toolbar > div {
+        flex: 0 0 auto !important; width: auto !important;
+    }
+    [data-testid="stHorizontalBlock"].color-toolbar button {
+        width: 80px !important; min-width: 80px !important; max-width: 80px !important;
+        padding-left: 4px !important; padding-right: 4px !important;
+        font-size: 0.78rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     with st.container(border=True):
-        st.markdown("**Narzędzie koloru**")
-        _cc = st.columns(len(_COLOR_PALETTE) + 2)
+        st.markdown("**Zmień kolor**")
+        _cc = st.columns(len(_COLOR_PALETTE) + 3)
         for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
             with _cc[idx]:
-                _swatch = f'<div style="width:100%;height:8px;background:{hexc};border-radius:3px;margin-bottom:4px"></div>'
-                st.markdown(_swatch, unsafe_allow_html=True)
+                st.markdown(f'<div class="color-swatch" style="background:{hexc}"></div>', unsafe_allow_html=True)
                 _btn_type = "primary" if st.session_state["active_color"] == hexc else "secondary"
                 if st.button(name, key=f"color_btn_{hexc}", type=_btn_type):
                     st.session_state["active_color"] = hexc
@@ -317,11 +333,41 @@ if station_map and sheets_data:
             if st.button("Wyczyść kolory", key="color_btn_clear"):
                 st.session_state["train_colors"] = {}
                 st.session_state["active_color"] = None
-                # Incrementuj nonce żeby odświeżyć komponenty
                 for _nk in list(st.session_state.keys()):
                     if _nk.startswith("plot_nonce_") or _nk.startswith("grid_nonce_"):
                         st.session_state[_nk] += 1
                 st.rerun()
+        # Przycisk instrukcji
+        with _cc[len(_COLOR_PALETTE) + 2]:
+            if st.button("Instrukcja", key="color_btn_help"):
+                st.session_state["_show_color_help"] = True
+                st.rerun()
+
+    # Modal z instrukcją
+    if st.session_state.get("_show_color_help"):
+        try:
+            @_dialog_decorator("Zmień kolor — instrukcja")
+            def _color_help_dialog():
+                st.markdown("""
+**Jak zmienić kolor pociągu?**
+
+1. Kliknij przycisk z wybranym kolorem (np. Czerwony).
+2. Kliknij dowolną komórkę pociągu w **tabeli** lub punkt na **wykresie** — linia na wykresie i tło kolumny w tabeli zmienią kolor.
+
+**Dodatkowe opcje:**
+
+- **Czarny** — resetuje kolor pociągu do domyślnego (czarnego).
+- **Brak koloru** — wyłącza narzędzie; kliknięcia znów otwierają okno edycji czasu.
+- **Wyczyść kolory** — usuwa wszystkie przypisane kolory.
+
+**Uwaga:** Gdy narzędzie koloru jest aktywne, podwójne kliknięcie (edycja czasu) jest zablokowane. Aby wrócić do edycji, kliknij „Brak koloru".
+""")
+                if st.button("Zamknij", key="color_help_close", type="primary"):
+                    st.session_state["_show_color_help"] = False
+                    st.rerun()
+            _color_help_dialog()
+        except Exception:
+            st.session_state["_show_color_help"] = False
 
     _active_color = st.session_state["active_color"]
     _train_colors = st.session_state["train_colors"]
