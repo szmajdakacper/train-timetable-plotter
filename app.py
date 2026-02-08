@@ -295,19 +295,15 @@ if station_map and sheets_data:
         ("Czarny", "#000000"),
     ]
 
-    # Styl: jednakowa szerokość przycisków i pasków koloru
+    # Styl paska kolorów: marker nad przyciskiem jako border-top
     st.markdown("""
     <style>
-    .color-swatch {
-        width: 80px; height: 8px; border-radius: 3px; margin: 0 auto 4px auto;
+    .color-mark + div [data-testid="stButton"] button {
+        border-top: 5px solid var(--mark-color) !important;
+        border-radius: 8px !important;
     }
-    [data-testid="stHorizontalBlock"].color-toolbar > div {
-        flex: 0 0 auto !important; width: auto !important;
-    }
-    [data-testid="stHorizontalBlock"].color-toolbar button {
-        width: 80px !important; min-width: 80px !important; max-width: 80px !important;
-        padding-left: 4px !important; padding-right: 4px !important;
-        font-size: 0.78rem !important;
+    .color-mark-active + div [data-testid="stButton"] button {
+        box-shadow: 0 0 0 3px var(--mark-color) !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -317,20 +313,21 @@ if station_map and sheets_data:
         _cc = st.columns(len(_COLOR_PALETTE) + 3)
         for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
             with _cc[idx]:
-                st.markdown(f'<div class="color-swatch" style="background:{hexc}"></div>', unsafe_allow_html=True)
-                _btn_type = "primary" if st.session_state["active_color"] == hexc else "secondary"
-                if st.button(name, key=f"color_btn_{hexc}", type=_btn_type):
+                _is_active = st.session_state["active_color"] == hexc
+                _mark_cls = "color-mark-active" if _is_active else "color-mark"
+                st.markdown(f'<div class="{_mark_cls}" style="--mark-color:{hexc};height:0"></div>', unsafe_allow_html=True)
+                if st.button(name, key=f"color_btn_{hexc}", type="primary" if _is_active else "secondary", use_container_width=True):
                     st.session_state["active_color"] = hexc
                     st.rerun()
         # "Brak koloru" — deaktywacja narzędzia
         with _cc[len(_COLOR_PALETTE)]:
             _btn_type_none = "primary" if st.session_state["active_color"] is None else "secondary"
-            if st.button("Brak koloru", key="color_btn_none", type=_btn_type_none):
+            if st.button("Brak koloru", key="color_btn_none", type=_btn_type_none, use_container_width=True):
                 st.session_state["active_color"] = None
                 st.rerun()
         # "Wyczyść kolory" — reset wszystkich kolorów
         with _cc[len(_COLOR_PALETTE) + 1]:
-            if st.button("Wyczyść kolory", key="color_btn_clear"):
+            if st.button("Wyczyść kolory", key="color_btn_clear", use_container_width=True):
                 st.session_state["train_colors"] = {}
                 st.session_state["active_color"] = None
                 for _nk in list(st.session_state.keys()):
@@ -339,7 +336,7 @@ if station_map and sheets_data:
                 st.rerun()
         # Przycisk instrukcji
         with _cc[len(_COLOR_PALETTE) + 2]:
-            if st.button("Instrukcja", key="color_btn_help"):
+            if st.button("Instrukcja", key="color_btn_help", use_container_width=True):
                 st.session_state["_show_color_help"] = True
                 st.rerun()
 
