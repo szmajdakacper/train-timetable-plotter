@@ -380,6 +380,9 @@ if station_map and sheets_data:
             b.style.color = c[1];
             b.style.borderColor = c[0];
             b.style.borderRadius = '8px';
+            b.style.whiteSpace = 'nowrap';
+            b.style.overflow = 'hidden';
+            b.style.fontSize = (b.scrollWidth > b.clientWidth) ? '0.7em' : '';
             b.classList.add('_cbtn');
             b.style.animation = (A === c[0]) ? '_cb 1.2s ease-in-out infinite' : '';
         }});
