@@ -1,3 +1,14 @@
+---
+title: Wykresy z tabeli - KD
+emoji: 🚆
+colorFrom: yellow
+colorTo: brown
+sdk: streamlit
+sdk_version: "1.41.0"
+app_file: app.py
+pinned: false
+---
+
 # Train Timetable Plotter
 
 Interactive visualization tool for train timetables that allows you to:
