@@ -808,40 +808,39 @@ st.markdown("---")
 
 # Debugowy podgląd danych zapisanych w stanie aplikacji
 
-st.title("🧪 Debug: Excel → session state")
+with st.expander("🧪 Debug: Excel → session state"):
+    st.subheader("Mapa stacji (z 1. arkusza)")
+    if station_map:
+        st.json(station_map)
+    else:
+        st.info("Brak danych. Wczytaj plik.")
 
-st.subheader("Mapa stacji (z 1. arkusza)")
-if station_map:
-    st.json(station_map)
-else:
-    st.info("Brak danych. Wczytaj plik.")
+    st.subheader("Weryfikacja spójności listy stacji we wszystkich arkuszach")
+    station_check = st.session_state.get("station_check", {"ok": False, "mismatches": []})
+    st.write("Zgodność:", "TAK" if station_check.get("ok") else "NIE")
+    if station_check.get("mismatches"):
+        st.json(station_check["mismatches"])
 
-st.subheader("Weryfikacja spójności listy stacji we wszystkich arkuszach")
-station_check = st.session_state.get("station_check", {"ok": False, "mismatches": []})
-st.write("Zgodność:", "TAK" if station_check.get("ok") else "NIE")
-if station_check.get("mismatches"):
-    st.json(station_check["mismatches"])
-
-st.subheader("Dane pociągów per arkusz")
-if sheets_data:
-    for entry in sheets_data:
-        st.markdown(f"**Arkusz:** {entry.get('sheet')}")
-        trains = entry.get("trains", [])
-        if not trains:
-            st.write("(brak danych pociągów)")
-            continue
-        minimal_view = [
-            {
-                "train_number": t["train_number"],
-                "station": t["station"],
-                "km": t["km"],
-                "time": t["time"],
-            }
-            for t in trains
-        ]
-        st.dataframe(minimal_view, use_container_width=True)
-else:
-    st.info("Brak danych pociągów. Wczytaj plik.")
+    st.subheader("Dane pociągów per arkusz")
+    if sheets_data:
+        for entry in sheets_data:
+            st.markdown(f"**Arkusz:** {entry.get('sheet')}")
+            trains = entry.get("trains", [])
+            if not trains:
+                st.write("(brak danych pociągów)")
+                continue
+            minimal_view = [
+                {
+                    "train_number": t["train_number"],
+                    "station": t["station"],
+                    "km": t["km"],
+                    "time": t["time"],
+                }
+                for t in trains
+            ]
+            st.dataframe(minimal_view, use_container_width=True)
+    else:
+        st.info("Brak danych pociągów. Wczytaj plik.")
 
 # Footer – profesjonalny podpis
 footer_year = dt.date.today().year
