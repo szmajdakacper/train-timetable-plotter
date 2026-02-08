@@ -52,7 +52,6 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 
-# Screenshots & example data
+# Screenshots
 zrzut_ekranu/
 Zrzut_ekranu/
-example_table/

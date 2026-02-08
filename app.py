@@ -115,6 +115,52 @@ st.title("Rozkład Jazdy - wykresy z tabeli")
 
 uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx)", type=["xlsx"])
 
+if not uploaded_file:
+    with st.expander("Wymagania do pliku xlsx"):
+        st.markdown("""
+**Plik musi być w formacie `.xlsx`** (Excel 2007+).
+
+#### Wymagane nagłówki
+W każdym arkuszu muszą znajdować się następujące komórki-nagłówki (wielkość liter i polskie znaki nie mają znaczenia):
+
+| Nagłówek | Dopuszczalne warianty |
+|---|---|
+| Numer pociągu | `Numer pociągu`, `Nr pociągu`, `Pociąg`, `Train number` |
+| Kilometraż | `km`, `Kilometraż`, `Kilometr` |
+| Początek listy stacji | `Ze stacji`, `Od stacji`, `Start stacji` |
+| Koniec listy stacji | `Do stacji`, `Na stację`, `Cel stacji`, `Koniec stacji` |
+
+#### Struktura arkusza
+- **Stacje** — wymienione w kolumnie poniżej nagłówka „Ze stacji", każda z wartością `km` w sąsiedniej kolumnie.
+- **Numery pociągów** — w wierszu oznaczonym nagłówkiem „Numer pociągu". Numer musi zawierać co najmniej jedną cyfrę.
+- **Czasy** — w komórkach na przecięciu wiersza stacji i kolumny pociągu.
+
+#### Formaty czasu
+Akceptowane formaty w komórkach z czasem:
+- `HH:MM` lub `HH:MM:SS` (np. `14:30`)
+- `HH.MM` (np. `14.30` — dwie cyfry po kropce = minuty)
+- Ułamek doby Excela (np. `0.604` = 14:30)
+- Obiekt `datetime` / `time` z Excela
+- Sufiks dnia `(+1)`, `(+2)` itp. dla przejazdów po północy
+
+#### Wiele arkuszy
+- Lista stacji i km w każdym arkuszu powinna być taka sama jak w pierwszym arkuszu (jest weryfikowana).
+- Każdy arkusz może zawierać inne pociągi.
+
+#### Scalone komórki
+Scalone komórki są obsługiwane — wartość z lewej górnej komórki zostanie skopiowana do wszystkich komórek zakresu.
+
+#### Ukryte kolumny
+Kolumny oznaczone w Excelu jako ukryte zostaną automatycznie pominięte.
+""")
+        with open("example_table/d1_test.xlsx", "rb") as f:
+            st.download_button(
+                label="Pobierz przykładowy plik",
+                data=f,
+                file_name="d1_test.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
 if uploaded_file:
     try:
         # zapamiętaj nazwę wczytanego pliku do nazwania eksportu
