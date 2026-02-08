@@ -295,15 +295,28 @@ if station_map and sheets_data:
         ("Czarny", "#000000"),
     ]
 
-    # Styl paska kolorów: marker nad przyciskiem jako border-top
+    # Styl paska kolorów: tło w kolorze + mruganie aktywnego
     st.markdown("""
     <style>
+    @keyframes color-blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
     .color-mark + div [data-testid="stButton"] button {
-        border-top: 5px solid var(--mark-color) !important;
+        background-color: var(--mark-color) !important;
+        color: var(--mark-text) !important;
+        border: 2px solid var(--mark-color) !important;
         border-radius: 8px !important;
     }
+    .color-mark + div [data-testid="stButton"] button:hover {
+        filter: brightness(1.15);
+    }
     .color-mark-active + div [data-testid="stButton"] button {
-        box-shadow: 0 0 0 3px var(--mark-color) !important;
+        background-color: var(--mark-color) !important;
+        color: var(--mark-text) !important;
+        border: 2px solid var(--mark-color) !important;
+        border-radius: 8px !important;
+        animation: color-blink 1.2s ease-in-out infinite;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -311,11 +324,13 @@ if station_map and sheets_data:
     with st.container(border=True):
         st.markdown("**Zmień kolor**")
         _cc = st.columns(len(_COLOR_PALETTE) + 3)
+        _LIGHT_COLORS = {"#ffe119"}  # kolory wymagające ciemnego tekstu
         for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
             with _cc[idx]:
                 _is_active = st.session_state["active_color"] == hexc
                 _mark_cls = "color-mark-active" if _is_active else "color-mark"
-                st.markdown(f'<div class="{_mark_cls}" style="--mark-color:{hexc};height:0"></div>', unsafe_allow_html=True)
+                _text = "#1a1a1a" if hexc in _LIGHT_COLORS else "#fff"
+                st.markdown(f'<div class="{_mark_cls}" style="--mark-color:{hexc};--mark-text:{_text};height:0"></div>', unsafe_allow_html=True)
                 if st.button(name, key=f"color_btn_{hexc}", type="primary" if _is_active else "secondary", use_container_width=True):
                     st.session_state["active_color"] = hexc
                     st.rerun()
