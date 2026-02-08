@@ -296,42 +296,43 @@ if station_map and sheets_data:
     ]
 
     # Styl paska kolorów: tło w kolorze + mruganie aktywnego
-    st.markdown("""
+    # Selektor :has() na stColumn — każda kolumna zawiera marker [data-color],
+    # więc styl trafia dokładnie w przycisk w tej samej kolumnie.
+    _LIGHT_COLORS = {"#ffe119"}
+    _color_css = "\n".join(
+        f'[data-testid="stColumn"]:has([data-color="{hx}"]) button {{\n'
+        f'  background-color: {hx} !important;\n'
+        f'  color: {"#1a1a1a" if hx in _LIGHT_COLORS else "#fff"} !important;\n'
+        f'  border: 2px solid {hx} !important;\n'
+        f'  border-radius: 8px !important;\n'
+        f'}}\n'
+        f'[data-testid="stColumn"]:has([data-color="{hx}"]) button:hover {{\n'
+        f'  filter: brightness(1.15);\n'
+        f'}}'
+        for _, hx in _COLOR_PALETTE
+    )
+    st.markdown(f"""
     <style>
-    @keyframes color-blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-    }
-    .color-mark + div [data-testid="stButton"] button {
-        background-color: var(--mark-color) !important;
-        color: var(--mark-text) !important;
-        border: 2px solid var(--mark-color) !important;
-        border-radius: 8px !important;
-    }
-    .color-mark + div [data-testid="stButton"] button:hover {
-        filter: brightness(1.15);
-    }
-    .color-mark-active + div [data-testid="stButton"] button {
-        background-color: var(--mark-color) !important;
-        color: var(--mark-text) !important;
-        border: 2px solid var(--mark-color) !important;
-        border-radius: 8px !important;
+    @keyframes color-blink {{
+        0%, 100% {{ opacity: 1; }}
+        50% {{ opacity: 0.35; }}
+    }}
+    {_color_css}
+    [data-testid="stColumn"]:has(.color-active) button {{
         animation: color-blink 1.2s ease-in-out infinite;
-    }
+    }}
     </style>
     """, unsafe_allow_html=True)
 
     with st.container(border=True):
         st.markdown("**Zmień kolor**")
         _cc = st.columns(len(_COLOR_PALETTE) + 3)
-        _LIGHT_COLORS = {"#ffe119"}  # kolory wymagające ciemnego tekstu
         for idx, (name, hexc) in enumerate(_COLOR_PALETTE):
             with _cc[idx]:
                 _is_active = st.session_state["active_color"] == hexc
-                _mark_cls = "color-mark-active" if _is_active else "color-mark"
-                _text = "#1a1a1a" if hexc in _LIGHT_COLORS else "#fff"
-                st.markdown(f'<div class="{_mark_cls}" style="--mark-color:{hexc};--mark-text:{_text};height:0"></div>', unsafe_allow_html=True)
-                if st.button(name, key=f"color_btn_{hexc}", type="primary" if _is_active else "secondary", use_container_width=True):
+                _cls = "color-active" if _is_active else ""
+                st.markdown(f'<div data-color="{hexc}" class="{_cls}" style="display:none"></div>', unsafe_allow_html=True)
+                if st.button(name, key=f"color_btn_{hexc}", use_container_width=True):
                     st.session_state["active_color"] = hexc
                     st.rerun()
         # "Brak koloru" — deaktywacja narzędzia
