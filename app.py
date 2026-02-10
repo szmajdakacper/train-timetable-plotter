@@ -94,6 +94,129 @@ st.markdown("""
         background-color: #d0e2fc;
         border-color: #6a9bd8;
     }
+
+    /* ===== Wymuszenie jasnych teł — zabezpieczenie przed trybem ciemnym ===== */
+
+    /* Inline code (backtick `kod` w st.markdown) */
+    .stApp code {
+        background-color: #ede8df !important;
+        color: #1a1a1a !important;
+    }
+
+    /* Bloki kodu (st.code, fenced code w markdown) */
+    [data-testid="stCodeBlock"],
+    [data-testid="stCodeBlock"] pre,
+    [data-testid="stCodeBlock"] code,
+    .stApp pre {
+        background-color: #ede8df !important;
+        color: #1a1a1a !important;
+    }
+
+    /* Widgety input — generyczne BaseWeb overrides */
+    .stApp [data-baseweb="input"],
+    .stApp [data-baseweb="base-input"],
+    .stApp [data-baseweb="select"] {
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+    .stApp [data-baseweb="input"] input,
+    .stApp [data-baseweb="base-input"] input {
+        color: #1a1a1a !important;
+    }
+
+    /* Dropdowny selectbox/time_input (portale BaseWeb poza .stApp) */
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] ul,
+    [data-baseweb="popover"] li,
+    [data-baseweb="menu"],
+    [data-baseweb="menu"] ul,
+    [data-baseweb="menu"] li {
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+    [data-baseweb="popover"] li:hover,
+    [data-baseweb="menu"] li:hover {
+        background-color: #f3ece0 !important;
+    }
+
+    /* st.dataframe / st.table */
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        background-color: #ffffff !important;
+    }
+    [data-testid="stTable"] th {
+        background-color: #f3ece0 !important;
+        color: #1a1a1a !important;
+    }
+    [data-testid="stTable"] td {
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+
+    /* Alerty (st.info, st.success, st.error, st.warning) */
+    [data-testid="stAlert"],
+    [data-testid="stAlert"] div {
+        color: #1a1a1a !important;
+    }
+
+    /* Expander */
+    [data-testid="stExpander"] {
+        background-color: #faf7f1 !important;
+        border-color: rgba(195, 176, 145, 0.3) !important;
+    }
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+        background-color: #faf7f1 !important;
+        color: #1a1a1a !important;
+    }
+
+    /* Dialog / Modal */
+    [data-testid="stModal"] div[role="dialog"],
+    [data-testid="stDialog"] div[role="dialog"] {
+        background-color: #faf7f1 !important;
+        color: #1a1a1a !important;
+    }
+    [data-testid="stDialog"] div[role="dialog"] * {
+        color: #1a1a1a !important;
+    }
+
+    /* Taby */
+    [data-testid="stTabs"] button[data-testid="stTab"] {
+        color: #1a1a1a !important;
+    }
+
+    /* Etykiety widgetów */
+    [data-testid="stWidgetLabel"],
+    .stApp label {
+        color: #1a1a1a !important;
+    }
+
+    /* Nagłówek strony (toolbar) */
+    [data-testid="stHeader"] {
+        background-color: rgba(250, 247, 241, 0.95) !important;
+    }
+
+    /* Stopka Streamlit */
+    [data-testid="stBottom"],
+    footer {
+        background-color: #faf7f1 !important;
+    }
+
+    /* Tooltips BaseWeb (ikony pomocy przy widgetach) */
+    [data-baseweb="tooltip"] {
+        background-color: #333333 !important;
+        color: #ffffff !important;
+    }
+
+    /* Tabela markdown — wymuszenie jasnych teł komórek */
+    .stApp table th {
+        background-color: #f3ece0 !important;
+        color: #1a1a1a !important;
+    }
+    .stApp table td {
+        background-color: #faf7f1 !important;
+        color: #1a1a1a !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
