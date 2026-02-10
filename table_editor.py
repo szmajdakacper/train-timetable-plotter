@@ -143,8 +143,12 @@ def propagate_time_shift(
         # Not enough data to determine direction; nothing to propagate
         return
 
-    # Detect direction: sort by km ascending, compare first vs last time
-    sorted_by_km = sorted(train_recs, key=lambda r: float(r.get("km", 0.0)))
+    # Detect direction: exclude the edited station (from_km) so that
+    # a just-saved extreme value cannot flip the detected direction.
+    direction_recs = [r for r in train_recs if float(r.get("km", 0.0)) != float(from_km)]
+    if len(direction_recs) < 2:
+        direction_recs = train_recs  # fallback: not enough non-edited stations
+    sorted_by_km = sorted(direction_recs, key=lambda r: float(r.get("km", 0.0)))
     first_time = float(sorted_by_km[0].get("time_decimal", 0.0))
     last_time = float(sorted_by_km[-1].get("time_decimal", 0.0))
     ascending = last_time >= first_time  # True = forward (km increases with time)
