@@ -694,8 +694,26 @@ if station_map and sheets_data:
                     global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
                     global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)
             if pts:
-                # Sortuj punkty po czasie, aby linia nie cofała się przy stacjach dualnych
-                pts.sort(key=lambda p: p["value"][0])
+                # Wykryj kierunek pociągu głosowaniem większościowym:
+                # liczymy ile przejść między stacjami (po km) ma rosnący vs malejący czas.
+                # Odporny na pojedyncze niemonotoniczne punkty po edycji użytkownika.
+                pts.sort(key=lambda p: p["value"][1])  # wstępny sort po km
+                _asc_votes = 0
+                _desc_votes = 0
+                for _i in range(1, len(pts)):
+                    if pts[_i]["value"][1] == pts[_i - 1]["value"][1]:
+                        continue  # ten sam km (stacja dualna), pomiń
+                    if pts[_i]["value"][0] > pts[_i - 1]["value"][0]:
+                        _asc_votes += 1
+                    elif pts[_i]["value"][0] < pts[_i - 1]["value"][0]:
+                        _desc_votes += 1
+                if _desc_votes > _asc_votes:
+                    # Pociąg zstępujący (km maleje z czasem): sortuj km malejąco,
+                    # ale na stacjach dualnych (ten sam km) zawsze p przed o (czas rosnąco)
+                    pts.sort(key=lambda p: (-p["value"][1], p["value"][0]))
+                else:
+                    # Pociąg wstępujący (km rośnie z czasem): km rosnąco, czas jako tiebreaker
+                    pts.sort(key=lambda p: (p["value"][1], p["value"][0]))
                 # Nazwa serii zawiera arkusz, by rozróżnić te same numery pociągów w różnych arkuszach
                 series.append({"name": f"{tn} ({sheet})", "points": pts})
 
@@ -796,11 +814,17 @@ if station_map and sheets_data:
                             new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
                             parsed_norm = float(parsed) % 24
                             delta_hours = new_dec - parsed_norm
+                            # Normalize delta to [-12, +12] to handle midnight crossing
+                            if delta_hours > 12:
+                                delta_hours -= 24
+                            elif delta_hours < -12:
+                                delta_hours += 24
                         else:
                             delta_hours = 0.0
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
+                        # Propagate BEFORE save so direction detection uses unmodified data
                         if prop and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
                         st.session_state[plot_nonce_key] += 1
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()
@@ -832,11 +856,17 @@ if station_map and sheets_data:
                             new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
                             parsed_norm = float(parsed) % 24
                             delta_hours = new_dec - parsed_norm
+                            # Normalize delta to [-12, +12] to handle midnight crossing
+                            if delta_hours > 12:
+                                delta_hours -= 24
+                            elif delta_hours < -12:
+                                delta_hours += 24
                         else:
                             delta_hours = 0.0
-                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
+                        # Propagate BEFORE save so direction detection uses unmodified data
                         if prop_fb and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
+                        save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
                         st.session_state[plot_nonce_key] += 1
                         st.session_state[grid_nonce_key] += 1
                         st.rerun()
@@ -932,12 +962,18 @@ if station_map and sheets_data:
                                 new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
                                 parsed_norm = float(parsed) % 24
                                 delta_hours = new_dec - parsed_norm
+                                # Normalize delta to [-12, +12] to handle midnight crossing
+                                if delta_hours > 12:
+                                    delta_hours -= 24
+                                elif delta_hours < -12:
+                                    delta_hours += 24
                             else:
                                 delta_hours = 0.0
 
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
+                            # Propagate BEFORE save so direction detection uses unmodified data
                             if prop and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
                             st.session_state[grid_nonce_key] += 1
                             st.session_state[plot_nonce_key] += 1
                             st.rerun()
@@ -969,11 +1005,17 @@ if station_map and sheets_data:
                                 new_dec = float(t.hour) + float(t.minute)/60.0 + float(getattr(t, 'second', 0))/3600.0
                                 parsed_norm = float(parsed) % 24
                                 delta_hours = new_dec - parsed_norm
+                                # Normalize delta to [-12, +12] to handle midnight crossing
+                                if delta_hours > 12:
+                                    delta_hours -= 24
+                                elif delta_hours < -12:
+                                    delta_hours += 24
                             else:
                                 delta_hours = 0.0
-                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
+                            # Propagate BEFORE save so direction detection uses unmodified data
                             if prop_fb and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
+                            save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
                             st.session_state[grid_nonce_key] += 1
                             st.session_state[plot_nonce_key] += 1
                             st.rerun()
