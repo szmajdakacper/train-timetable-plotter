@@ -1,3 +1,4 @@
+import json
 import hashlib
 import datetime as dt
 from io import BytesIO
@@ -241,7 +242,7 @@ st.markdown("""
 
 st.title("Rozkład Jazdy - wykresy z tabeli")
 
-uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx)", type=["xlsx"])
+uploaded_file = st.file_uploader("Prześlij plik Excel (.xlsx) lub projekt (.json)", type=["xlsx", "json"])
 
 if not uploaded_file:
     with st.expander("Wymagania do pliku xlsx"):
@@ -290,20 +291,46 @@ Kolumny oznaczone w Excelu jako ukryte zostaną automatycznie pominięte.
             )
 
 if uploaded_file:
-    try:
-        # zapamiętaj nazwę wczytanego pliku do nazwania eksportu
-        try:
-            st.session_state["uploaded_name"] = str(uploaded_file.name)
-        except Exception:
-            pass
+    _fname = str(getattr(uploaded_file, "name", "") or "")
+    if _fname.lower().endswith(".json"):
+        # Wczytanie projektu z pliku JSON
         file_bytes = uploaded_file.getvalue()
         file_hash = hashlib.sha256(file_bytes).hexdigest()
         if st.session_state.get("uploaded_hash") != file_hash:
-            read_and_store_in_session(file_bytes, st.session_state)
-            st.session_state["uploaded_hash"] = file_hash
-            st.success("Dane wczytane i zapisane do st.session_state")
-    except Exception as e:
-        st.error(f"Nie udało się wczytać pliku: {e}")
+            try:
+                project = json.loads(file_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                st.error(f"Błąd parsowania pliku projektu: {e}")
+                project = None
+            if project is not None:
+                if project.get("_format") != "train-timetable-plotter-project":
+                    st.error("Nieprawidłowy format pliku projektu (brak pola _format).")
+                elif "sheets_data" not in project:
+                    st.error("Plik projektu nie zawiera danych arkuszy (sheets_data).")
+                else:
+                    st.session_state["sheets_data"] = project["sheets_data"]
+                    st.session_state["station_map"] = project.get("station_map", {})
+                    st.session_state["station_maps"] = project.get("station_maps", {})
+                    st.session_state["train_colors"] = project.get("train_colors", {})
+                    st.session_state["uploaded_name"] = project.get("uploaded_name", "")
+                    st.session_state["selected_sheet"] = project.get("selected_sheet", "")
+                    st.session_state["uploaded_hash"] = file_hash
+                    st.success("Projekt wczytany z pliku JSON")
+    else:
+        # Wczytanie danych z pliku Excel
+        try:
+            try:
+                st.session_state["uploaded_name"] = _fname
+            except Exception:
+                pass
+            file_bytes = uploaded_file.getvalue()
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
+            if st.session_state.get("uploaded_hash") != file_hash:
+                read_and_store_in_session(file_bytes, st.session_state)
+                st.session_state["uploaded_hash"] = file_hash
+                st.success("Dane wczytane i zapisane do st.session_state")
+        except Exception as e:
+            st.error(f"Nie udało się wczytać pliku: {e}")
 
 """Tabela km – stacja – pociągi"""
 station_map = st.session_state.get("station_map", {})
@@ -334,7 +361,7 @@ if station_map and sheets_data:
 
     # Przyciski akcji
     with st.container(border=True):
-        col_dl, _ = st.columns([1,5])
+        col_dl, col_proj, _ = st.columns([1,1,4])
 
         def _hhmm_from_any(val: any) -> str:
             try:
@@ -459,6 +486,19 @@ if station_map and sheets_data:
             buf.seek(0)
             return buf.getvalue()
 
+        def build_project_json() -> bytes:
+            project = {
+                "_format": "train-timetable-plotter-project",
+                "_version": 1,
+                "uploaded_name": st.session_state.get("uploaded_name", ""),
+                "selected_sheet": st.session_state.get("selected_sheet", ""),
+                "station_map": st.session_state.get("station_map", {}),
+                "station_maps": st.session_state.get("station_maps", {}),
+                "sheets_data": st.session_state.get("sheets_data", []),
+                "train_colors": st.session_state.get("train_colors", {}),
+            }
+            return json.dumps(project, ensure_ascii=False, indent=2).encode("utf-8")
+
         with col_dl:
             xbytes = build_excel_bytes()
             export_name = st.session_state.get("uploaded_name") or "rozkład.xlsx"
@@ -467,6 +507,17 @@ if station_map and sheets_data:
                 data=xbytes,
                 file_name=export_name,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+        with col_proj:
+            proj_bytes = build_project_json()
+            base_name = (st.session_state.get("uploaded_name") or "projekt").rsplit(".", 1)[0]
+            _ts = dt.datetime.now().strftime("%H_%M_%d_%m_%Y")
+            st.download_button(
+                label="Zapisz projekt",
+                data=proj_bytes,
+                file_name=f"{base_name}_{_ts}.json",
+                mime="application/json",
             )
 
     # --- Narzędzie koloru pociągów ---
