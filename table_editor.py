@@ -1,120 +1,7 @@
-from typing import List, Dict, Tuple, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import datetime as _dt
 
-import pandas as pd
-
-from utils import parse_time, format_time_decimal
-
-
-def _strip_day_suffix(value: str) -> str:
-    """Remove optional day suffix like ' (+1)' from time strings."""
-    s = str(value).strip()
-    # simple cut at first space before '(' if present
-    if "(" in s:
-        s = s.split("(", 1)[0].strip()
-    return s
-
-
-def _to_float_km(km_str: str) -> float:
-    try:
-        return float(str(km_str).replace(",", "."))
-    except Exception:
-        return float("nan")
-
-
-def apply_table_edits(
-    selected_sheet: str,
-    original_df: pd.DataFrame,
-    edited_df: pd.DataFrame,
-    session_state,
-) -> List[str]:
-    """Apply edits from edited_df back into session_state['sheets_data'] for selected_sheet.
-
-    - Assumes df has columns: 'km', 'stacja', and train numbers as remaining columns.
-    - Values should be 'HH:MM' (empty string clears value).
-    - Performs basic validation using utils.parse_time after stripping '(+d)'.
-    Returns list of validation error messages.
-    """
-    errors: List[str] = []
-
-    # Identify train columns
-    non_train_cols = {"km", "stacja"}
-    train_cols = [c for c in edited_df.columns if c not in non_train_cols]
-
-    # Build quick access to active sheet trains list
-    sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
-    active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
-    if active is None:
-        return ["Nie znaleziono danych dla wybranego arkusza."]
-    trains_list: List[Dict[str, any]] = active.get("trains", [])
-
-    # Index existing records by (station, km, train_number)
-    def key_of(rec: Dict[str, any]) -> Tuple[str, float, str]:
-        return (rec["station"], float(rec["km"]), str(rec["train_number"]))
-
-    records_by_key: Dict[Tuple[str, float, str], Dict[str, any]] = {
-        key_of(rec): rec for rec in trains_list
-    }
-
-    # Walk through rows and columns to find changes
-    for idx in range(len(edited_df)):
-        station = str(edited_df.at[idx, "stacja"]).strip()
-        km_val = _to_float_km(edited_df.at[idx, "km"]).__float__()
-        for train in train_cols:
-            old_val = str(original_df.at[idx, train]) if train in original_df.columns else ""
-            new_val = str(edited_df.at[idx, train])
-
-            if new_val == old_val:
-                continue
-
-            rec_key = (station, km_val, str(train))
-
-            # Empty string clears value
-            if new_val.strip() == "":
-                if rec_key in records_by_key:
-                    # remove from list
-                    rec = records_by_key.pop(rec_key)
-                    try:
-                        trains_list.remove(rec)
-                    except ValueError:
-                        pass
-                continue
-
-            # Validate and normalize time
-            parsed = parse_time(_strip_day_suffix(new_val))
-            if parsed is None:
-                errors.append(
-                    f"Niepoprawny czas w wierszu {idx + 1}, pociąg {train}, stacja {station}: '{new_val}'"
-                )
-                continue
-
-            canonical_str = format_time_decimal(float(parsed))
-
-            if rec_key in records_by_key:
-                rec = records_by_key[rec_key]
-                rec["time"] = canonical_str
-                rec["time_decimal"] = float(parsed)
-            else:
-                new_rec = {
-                    "train_number": str(train),
-                    "station": station,
-                    "km": float(km_val),
-                    "time": canonical_str,
-                    "time_decimal": float(parsed),
-                }
-                trains_list.append(new_rec)
-                records_by_key[rec_key] = new_rec
-
-    # Persist back to session_state (active already references the list)
-    active["trains"] = trains_list
-    # Replace the entry in sheets_data to be safe
-    for i, s in enumerate(sheets_data):
-        if s.get("sheet") == selected_sheet:
-            sheets_data[i] = active
-            break
-    session_state["sheets_data"] = sheets_data
-
-    return errors
+from utils import format_time_decimal
 
 
 def save_cell_time(
@@ -136,15 +23,15 @@ def save_cell_time(
     the same (station, km, train_number) key ("p" = arrival, "o" = departure,
     None = non-dual station).
     """
-    sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
+    sheets_data: List[Dict[str, Any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
     if active is None:
         return
-    trains_list: List[Dict[str, any]] = active.get("trains", [])
+    trains_list: List[Dict[str, Any]] = active.get("trains", [])
 
     key = (station, float(km), str(train_number))
 
-    def rec_key(r: Dict[str, any]) -> Tuple[str, float, str]:
+    def rec_key(r: Dict[str, Any]) -> Tuple[str, float, str]:
         return (r["station"], float(r["km"]), str(r["train_number"]))
 
     # compute decimal and canonical string
@@ -198,15 +85,15 @@ def clear_cell_time(
     the same (station, km, train_number) key ("p" = arrival, "o" = departure,
     None = non-dual station).
     """
-    sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
+    sheets_data: List[Dict[str, Any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
     if active is None:
         return
-    trains_list: List[Dict[str, any]] = active.get("trains", [])
+    trains_list: List[Dict[str, Any]] = active.get("trains", [])
 
     key = (station, float(km), str(train_number))
 
-    def rec_key(r: Dict[str, any]) -> Tuple[str, float, str]:
+    def rec_key(r: Dict[str, Any]) -> Tuple[str, float, str]:
         return (r["station"], float(r["km"]), str(r["train_number"]))
 
     target_idx = None
@@ -240,11 +127,11 @@ def propagate_time_shift(
     day crossing via decimal hours (format_time_decimal will render (+d) if
     needed).
     """
-    sheets_data: List[Dict[str, any]] = session_state.get("sheets_data", [])
+    sheets_data: List[Dict[str, Any]] = session_state.get("sheets_data", [])
     active = next((s for s in sheets_data if s.get("sheet") == selected_sheet), None)
     if active is None:
         return
-    trains_list: List[Dict[str, any]] = active.get("trains", [])
+    trains_list: List[Dict[str, Any]] = active.get("trains", [])
 
     # Collect all records for this train that have valid time_decimal
     train_recs = [

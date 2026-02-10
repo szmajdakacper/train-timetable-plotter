@@ -1,5 +1,5 @@
 import io
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -88,8 +88,8 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame],
 
     Returns a dict with keys:
     - station_map: Dict[str, float]  # station -> km from the first sheet
-    - station_check: Dict[str, any]  # {'ok': bool, 'mismatches': List[str]}
-    - sheets_data: List[Dict[str, any]]  # [{'sheet': name, 'trains': List[...]}]
+    - station_check: Dict[str, Any]  # {'ok': bool, 'mismatches': List[str]}
+    - sheets_data: List[Dict[str, Any]]  # [{'sheet': name, 'trains': List[...]}]
     """
     if not sheet_names:
         return {
@@ -121,7 +121,7 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame],
     reference_station_set = set(station_to_km.keys())
 
     mismatches: List[str] = []
-    sheets_data: List[Dict[str, any]] = []
+    sheets_data: List[Dict[str, Any]] = []
     station_maps: Dict[str, Dict[str, float]] = {sheet_names[0]: station_to_km}
 
     for sheet in sheet_names:
@@ -160,7 +160,7 @@ def extract_excel_data(sheet_names: List[str], sheets: Dict[str, pd.DataFrame],
             station_maps[sheet] = {}
 
         # Extract trains
-        trains_list: List[Dict[str, any]] = []
+        trains_list: List[Dict[str, Any]] = []
         if pos.get("train_row") is not None and stations:
             train_columns = extract_train_columns(
                 df,

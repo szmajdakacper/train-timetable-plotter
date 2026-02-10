@@ -1,10 +1,15 @@
-import streamlit as st
-import datetime as dt
 import hashlib
+import datetime as dt
+from io import BytesIO
+
+import pandas as pd
+import streamlit as st
+import streamlit.components.v1 as _stc
+from openpyxl import Workbook
 
 from excel_loader import read_and_store_in_session
 from table_editor import save_cell_time, clear_cell_time, propagate_time_shift
-from utils import parse_time, format_time_hhmm
+from utils import parse_time, format_time_hhmm, normalize
 from train_grid_component.backend.train_grid_component import train_grid
 from train_plot_component.backend.train_plot_component import train_plot
 
@@ -221,9 +226,6 @@ if station_map and sheets_data:
                 return ""
 
         def build_excel_bytes() -> bytes:
-            from io import BytesIO
-            from openpyxl import Workbook
-            from utils import normalize
 
             wb = Workbook()
             # usuń domyślny arkusz
@@ -423,7 +425,6 @@ if station_map and sheets_data:
         for n, h in _COLOR_PALETTE
     )
     _js_active = f"'{st.session_state['active_color']}'" if st.session_state["active_color"] else "null"
-    import streamlit.components.v1 as _stc
     _stc.html(f"""<script>
 (function() {{
     var C = {{{_js_map}}};
@@ -498,7 +499,6 @@ if station_map and sheets_data:
             dual_stations.add(key)
 
     # Render: tabela
-    import pandas as pd
     table_rows = []
     for station, km in ((name, km) for name, km in station_items):
         times = cell_map.get((station, float(km)), {})
@@ -733,7 +733,6 @@ if station_map and sheets_data:
     st.caption(f"Arkusz: {selected_sheet}")
 
     # Zbuduj columnDefs i wywołaj custom component
-    import pandas as pd
     train_cols = [c for c in df_view.columns if c not in ("km", "stacja", "_station_raw", "_stop_type")]
     column_defs = (
         [
