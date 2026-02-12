@@ -361,7 +361,7 @@ if station_map and sheets_data:
 
     # Przyciski akcji
     with st.container(border=True):
-        col_dl, col_proj, _ = st.columns([1,1,4])
+        col_dl, col_proj, col_circuits, _ = st.columns([1, 1, 1, 3])
 
         def _hhmm_from_any(val: any) -> str:
             try:
@@ -499,6 +499,206 @@ if station_map and sheets_data:
             }
             return json.dumps(project, ensure_ascii=False, indent=2).encode("utf-8")
 
+        def build_circuits_excel_bytes() -> bytes:
+            """Build XLSX with vehicle circuits (obiegi pojazdów) grouped by color."""
+            from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+
+            _HEX_TO_NAME = {
+                "#e6194b": "czerwony",
+                "#4363d8": "niebieski",
+                "#3cb44b": "zielony",
+                "#f58231": "pomarańczowy",
+                "#911eb4": "fioletowy",
+                "#ffe119": "żółty",
+            }
+            train_colors = st.session_state.get("train_colors", {})
+
+            # 1. Aggregate trains from ALL sheets
+            all_trains = {}
+            for entry in sheets_data:
+                for rec in entry.get("trains", []):
+                    tn = str(rec.get("train_number"))
+                    all_trains.setdefault(tn, []).append(rec)
+
+            # 2. Compute summary per train (only trains with >= 2 timed stops)
+            train_summaries = {}
+            for tn, records in all_trains.items():
+                timed = []
+                for r in records:
+                    td = r.get("time_decimal")
+                    if td is not None:
+                        try:
+                            timed.append((float(td), r))
+                        except (ValueError, TypeError):
+                            pass
+                if len(timed) < 2:
+                    continue
+                timed.sort(key=lambda x: x[0])
+                dep_time = timed[0][0]
+                dep_station = timed[0][1].get("station", "")
+                arr_time = timed[-1][0]
+                arr_station = timed[-1][1].get("station", "")
+                km_values = []
+                for _, r in timed:
+                    try:
+                        km_values.append(float(r.get("km", 0)))
+                    except (ValueError, TypeError):
+                        pass
+                km = abs(max(km_values) - min(km_values)) if km_values else 0.0
+                train_summaries[tn] = {
+                    "dep_station": dep_station,
+                    "dep_time": dep_time,
+                    "arr_station": arr_station,
+                    "arr_time": arr_time,
+                    "km": km,
+                }
+
+            # 3. Group by color
+            color_groups = {}
+            unassigned = []
+            for tn, summary in train_summaries.items():
+                color = train_colors.get(tn)
+                if color and color != "#000000":
+                    color_groups.setdefault(color, []).append((tn, summary))
+                else:
+                    unassigned.append((tn, summary))
+
+            for color in color_groups:
+                color_groups[color].sort(key=lambda x: x[1]["dep_time"])
+            unassigned.sort(key=lambda x: x[1]["dep_time"])
+
+            sorted_groups = sorted(
+                color_groups.items(),
+                key=lambda item: min(s["dep_time"] for _, s in item[1]),
+            )
+
+            groups = []
+            for color_hex, trains in sorted_groups:
+                name = _HEX_TO_NAME.get(color_hex, color_hex)
+                label = f"Obieg '{name}'"
+                groups.append((label, trains))
+            if unassigned:
+                groups.append(("Obieg 'pociągi nieprzypisane'", unassigned))
+
+            # 4. Write XLSX with styling matching example
+            wb_c = Workbook()
+            ws = wb_c.active
+            ws.title = "Obiegi_pojazdów"
+
+            # Style building blocks
+            _wfill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+            _calign = Alignment(horizontal="center", vertical="center")
+            _font = Font(name="Calibri", size=11)
+            _thick = Side(style="thick", color="000000")
+            _thin = Side(style="thin", color="AAAAAA")
+            _no = Side()
+
+            def _apply(cell, left=None, right=None, top=None, bottom=None):
+                cell.fill = _wfill
+                cell.alignment = _calign
+                cell.font = _font
+                cell.border = Border(left=left or _no, right=right or _no,
+                                     top=top or _no, bottom=bottom or _no)
+
+            # Column widths
+            ws.column_dimensions["E"].width = 19.57
+            ws.column_dimensions["F"].width = 22.86
+            ws.column_dimensions["I"].width = 19.43
+
+            # Row 2: headers (B=col2 .. J=col10)
+            ws.row_dimensions[2].height = 16.5
+            headers = ["Obieg", "Nr poc.", "Odj. RT", "Rel. od", "Rel. do",
+                        "Prz. RT", "Obsługa", "Uwagi", "km"]
+            for i, h in enumerate(headers):
+                col = 2 + i
+                cell = ws.cell(row=2, column=col, value=h)
+                if h in ("Odj. RT", "Prz. RT"):
+                    cell.number_format = "h:mm"
+                _apply(cell,
+                       left=_thick if col == 2 else _thin,
+                       right=_thick if col == 10 else _thin,
+                       top=_thick, bottom=_thick)
+
+            def _write_gap_rows(r_empty, r_sep):
+                """Write the 2 gap rows between groups (empty + separator)."""
+                ws.row_dimensions[r_empty].height = 15.75
+                ws.row_dimensions[r_sep].height = 19.5
+                for col in range(2, 11):
+                    # Empty row: top=thick
+                    ce = ws.cell(row=r_empty, column=col)
+                    _apply(ce,
+                           left=_thick if col == 2 else None,
+                           right=_thick if col == 10 else None,
+                           top=_thick)
+                    # Separator row: bottom=thick
+                    cs = ws.cell(row=r_sep, column=col)
+                    _apply(cs,
+                           left=_thick if col == 2 else None,
+                           right=_thick if col == 10 else None,
+                           bottom=_thick)
+                    if col in (4, 7):
+                        cs.number_format = "h:mm"
+                ws.cell(row=r_sep, column=3, value="")
+
+            row_num = 2
+            for label, trains in groups:
+                # Gap rows before each group
+                row_num += 1
+                r_empty = row_num
+                row_num += 1
+                r_sep = row_num
+                _write_gap_rows(r_empty, r_sep)
+
+                # Data rows
+                for t_idx, (tn, summary) in enumerate(trains):
+                    row_num += 1
+                    is_first = (t_idx == 0)
+                    ws.row_dimensions[row_num].height = 15.75
+
+                    # B: Obieg label (first row only)
+                    b_cell = ws.cell(row=row_num, column=2,
+                                     value=label if is_first else None)
+                    _apply(b_cell, left=_thick,
+                           top=_thick if is_first else None)
+
+                    # C: Nr poc.
+                    ws.cell(row=row_num, column=3,
+                            value=int(tn) if tn.isdigit() else tn)
+                    # D: Odj. RT
+                    ws.cell(row=row_num, column=4,
+                            value=_decimal_to_time(summary["dep_time"])).number_format = "h:mm"
+                    # E: Rel. od
+                    ws.cell(row=row_num, column=5, value=summary["dep_station"])
+                    # F: Rel. do
+                    ws.cell(row=row_num, column=6, value=summary["arr_station"])
+                    # G: Prz. RT
+                    ws.cell(row=row_num, column=7,
+                            value=_decimal_to_time(summary["arr_time"])).number_format = "h:mm"
+                    # H, I: empty
+                    # J: km
+                    ws.cell(row=row_num, column=10, value=summary["km"])
+
+                    # Style C-J
+                    top_s = _thick if is_first else _thin
+                    for col in range(3, 11):
+                        _apply(ws.cell(row=row_num, column=col),
+                               left=_thin,
+                               right=_thick if col == 10 else None,
+                               top=top_s, bottom=_thin)
+
+            # Closing gap rows after last group
+            if groups:
+                row_num += 1
+                r_empty = row_num
+                row_num += 1
+                r_sep = row_num
+                _write_gap_rows(r_empty, r_sep)
+
+            buf = BytesIO()
+            wb_c.save(buf)
+            buf.seek(0)
+            return buf.getvalue()
+
         with col_dl:
             xbytes = build_excel_bytes()
             export_name = st.session_state.get("uploaded_name") or "rozkład.xlsx"
@@ -518,6 +718,17 @@ if station_map and sheets_data:
                 data=proj_bytes,
                 file_name=f"{base_name}_{_ts}.json",
                 mime="application/json",
+            )
+
+        with col_circuits:
+            circuits_bytes = build_circuits_excel_bytes()
+            _circ_base = (st.session_state.get("uploaded_name") or "obiegi").rsplit(".", 1)[0]
+            _circ_ts = dt.datetime.now().strftime("%H_%M_%d_%m_%Y")
+            st.download_button(
+                label="Pobierz obiegi pojazdów",
+                data=circuits_bytes,
+                file_name=f"{_circ_base}_obiegi_{_circ_ts}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
     # --- Narzędzie koloru pociągów ---
