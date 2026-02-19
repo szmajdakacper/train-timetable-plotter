@@ -72,14 +72,15 @@ export default function TrainPlot({
     return series.map((s) => {
       const trainNum = s.name.replace(/ \([^)]+\)$/, "");
       const color = trainColors[trainNum] || "#000";
+      const hasColor = !!trainColors[trainNum] && trainColors[trainNum] !== "#000000";
       return {
         name: s.name,
         type: "line" as const,
         showSymbol: true,
-        symbolSize: 5,
+        symbolSize: hasColor ? 6 : 5,
         smooth: false,
         data: s.points,
-        lineStyle: { color, width: 1.5 },
+        lineStyle: { color, width: hasColor ? 2.5 : 1.5 },
         itemStyle: { color },
         tooltip: { trigger: "item" },
       };
