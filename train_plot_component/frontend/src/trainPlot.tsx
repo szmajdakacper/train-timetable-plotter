@@ -232,6 +232,7 @@ class TrainPlot extends StreamlitComponentBase {
           Streamlit.setComponentValue({
             type: "pointClick",
             train,
+            _ts: Date.now(),
           });
         } catch { /* noop */ }
       };
@@ -266,6 +267,7 @@ class TrainPlot extends StreamlitComponentBase {
             km,
             station: stationName,
             sheet,
+            _ts: Date.now(),
           });
         } catch { /* noop */ }
       };

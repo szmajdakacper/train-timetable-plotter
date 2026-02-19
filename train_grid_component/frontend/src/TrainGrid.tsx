@@ -81,6 +81,7 @@ class TrainGrid extends StreamlitComponentBase {
         oldValue: e.oldValue,
         newValue: e.newValue,
         row: e.data,
+        _ts: Date.now(),
       };
       Streamlit.setComponentValue(payload);
     };
@@ -91,6 +92,7 @@ class TrainGrid extends StreamlitComponentBase {
         rowIndex: e.node.rowIndex,
         field: e.colDef.field,
         row: e.data,
+        _ts: Date.now(),
       };
       Streamlit.setComponentValue(payload);
     };
@@ -102,6 +104,7 @@ class TrainGrid extends StreamlitComponentBase {
         type: "cellClick" as const,
         field,
         row: e.data,
+        _ts: Date.now(),
       };
       Streamlit.setComponentValue(payload);
     } : undefined;
