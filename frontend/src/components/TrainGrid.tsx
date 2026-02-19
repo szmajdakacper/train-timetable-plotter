@@ -48,14 +48,18 @@ export default function TrainGrid({
         color && color !== "#000000"
           ? { backgroundColor: hexToRgba(color, 0.15) }
           : undefined;
-      return { ...col, cellStyle };
+      return {
+        ...col,
+        cellStyle,
+        editable: colorMode ? false : col.editable,
+      };
     });
-  }, [columnDefs, trainColors]);
+  }, [columnDefs, trainColors, colorMode]);
 
   const defaultColDef: ColDef = useMemo(
     () => ({
-      sortable: true,
-      filter: true,
+      sortable: false,
+      filter: false,
       resizable: true,
     }),
     [],

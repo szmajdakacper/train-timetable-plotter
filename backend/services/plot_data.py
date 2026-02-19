@@ -85,9 +85,9 @@ def build_trains_payload(session: Any) -> dict[str, Any]:
 
     # Column defs
     column_defs = [
-        {"field": "km", "headerName": "km", "editable": False, "width": 60},
-        {"field": "stacja", "headerName": "stacja", "editable": False, "width": 60},
-    ] + [{"field": c, "headerName": c, "editable": True, "width": 120} for c in unique_trains]
+        {"field": "km", "headerName": "km", "editable": False, "width": 70},
+        {"field": "stacja", "headerName": "stacja", "editable": False, "width": 240},
+    ] + [{"field": c, "headerName": c, "editable": True, "width": 80} for c in unique_trains]
 
     # Plot series (all sheets)
     series, global_min_ms, global_max_ms = _build_plot_series(sheets_data, station_items)
