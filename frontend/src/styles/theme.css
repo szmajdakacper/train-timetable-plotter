@@ -1,0 +1,412 @@
+/* Warm cream theme — migrated from Streamlit CSS */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #faf7f1;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(195, 176, 145, 0.08),
+      rgba(195, 176, 145, 0.08) 1px,
+      transparent 1px,
+      transparent 14px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(195, 176, 145, 0.08),
+      rgba(195, 176, 145, 0.08) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  color: #1a1a1a;
+}
+
+.app {
+  margin: 0 auto;
+  padding: 24px 32px 80px;
+}
+
+h1 {
+  color: #4a3728;
+  margin-bottom: 24px;
+  font-size: 2rem;
+}
+
+h2 {
+  color: #4a3728;
+  margin-bottom: 12px;
+  font-size: 1.3rem;
+}
+
+section {
+  margin-bottom: 32px;
+}
+
+/* File upload */
+.file-upload {
+  border: 2px dashed #90b4e0;
+  border-radius: 8px;
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  background: #e8f0fe;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 20px;
+}
+
+.file-upload:hover,
+.file-upload.drag-over {
+  border-color: #6a9bd8;
+  background: #d0e2fc;
+}
+
+.file-upload p {
+  margin: 4px 0;
+}
+
+.file-upload-hint {
+  font-size: 0.85em;
+  color: #666;
+}
+
+/* Sheet selector */
+.sheet-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid rgba(195, 176, 145, 0.3);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  background: #faf7f1;
+}
+
+.sheet-selector-label {
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.sheet-btn {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.sheet-btn.active {
+  background: #4a3728;
+  color: #fff;
+  border-color: #4a3728;
+}
+
+.sheet-btn:hover:not(.active) {
+  background: #f3ece0;
+}
+
+/* Export bar */
+.export-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.btn-download {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #e8f0fe;
+  border: 1px solid #90b4e0;
+  border-radius: 4px;
+  color: #1a1a1a;
+  text-decoration: none;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.btn-download:hover {
+  background: #d0e2fc;
+  border-color: #6a9bd8;
+}
+
+/* Color toolbar */
+.color-toolbar {
+  padding: 12px 16px;
+  border: 1px solid rgba(195, 176, 145, 0.3);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  background: #faf7f1;
+}
+
+.color-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.color-swatch:hover {
+  filter: brightness(1.15);
+  transform: scale(1.15);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.color-swatch.pulsing {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* Buttons */
+button {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+button:hover {
+  background: #f3ece0;
+}
+
+.btn-primary {
+  background: #4a3728;
+  color: #fff;
+  border-color: #4a3728;
+}
+
+.btn-primary:hover {
+  background: #5d4a3a;
+}
+
+.btn-danger {
+  background: #e6194b;
+  color: #fff;
+  border-color: #e6194b;
+}
+
+.btn-danger:hover {
+  background: #cc1642;
+}
+
+/* Plot height control */
+.plot-height-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+}
+
+.plot-height-control input[type="range"] {
+  width: 200px;
+}
+
+/* Sheet caption */
+.sheet-caption {
+  color: #666;
+  font-size: 0.85em;
+  margin-bottom: 8px;
+}
+
+/* Edit dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.dialog {
+  background: #faf7f1;
+  border-radius: 8px;
+  padding: 24px;
+  min-width: 360px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.dialog h3 {
+  color: #4a3728;
+  margin-bottom: 12px;
+}
+
+.dialog-info {
+  font-size: 0.9em;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.dialog-time-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dialog-time-input label {
+  margin-right: 8px;
+}
+
+.dialog-time-input input {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1em;
+  text-align: center;
+}
+
+.dialog-time-input span {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.dialog-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* XLSX Requirements expander */
+.xlsx-requirements {
+  border: 1px solid rgba(195, 176, 145, 0.3);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  background: #faf7f1;
+}
+
+.xlsx-requirements summary {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a3728;
+  font-size: 0.95em;
+}
+
+.xlsx-requirements summary:hover {
+  background: #f3ece0;
+}
+
+.xlsx-requirements-body {
+  padding: 4px 16px 16px;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+
+.xlsx-requirements-body h4 {
+  color: #4a3728;
+  margin: 14px 0 6px;
+  font-size: 1em;
+}
+
+.xlsx-requirements-body p {
+  margin: 6px 0;
+}
+
+.xlsx-requirements-body ul {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.xlsx-requirements-body li {
+  margin: 3px 0;
+}
+
+.xlsx-requirements-body code {
+  background: rgba(195, 176, 145, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+.req-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.92em;
+}
+
+.req-table th,
+.req-table td {
+  border: 1px solid rgba(195, 176, 145, 0.3);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.req-table th {
+  background: #f3ece0;
+  font-weight: 600;
+}
+
+.xlsx-requirements-body .btn-download {
+  margin-top: 12px;
+}
+
+/* Error message */
+.error-msg {
+  background: #fce4ec;
+  color: #c62828;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  color: #888;
+  padding: 40px;
+  font-size: 1.1em;
+}
+
+/* Footer */
+.app-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  text-align: center;
+  color: #8a7560;
+  background: rgba(243, 236, 224, 0.85);
+  font-size: 12px;
+  z-index: 10000;
+  border-top: 1px solid rgba(195, 176, 145, 0.2);
+}
