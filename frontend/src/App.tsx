@@ -48,6 +48,7 @@ export default function App() {
     async (file: File) => {
       setLoading(true);
       setError(null);
+      setActiveColor(null);
       try {
         const res = await api.uploadFile(file);
         setSheets(res.sheets, res.selected_sheet);
