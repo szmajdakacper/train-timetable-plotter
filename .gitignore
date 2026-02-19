@@ -2,11 +2,9 @@
 node_modules/
 **/node_modules/
 
-# Allow committed build assets for Streamlit custom components
-!train_grid_component/frontend/dist/
-!train_grid_component/frontend/dist/**
-!train_plot_component/frontend/dist/
-!train_plot_component/frontend/dist/**
+# Frontend build output (committed for deployment)
+!frontend/dist/
+!frontend/dist/**
 
 build/
 **/build/

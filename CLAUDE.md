@@ -4,81 +4,121 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Train Timetable Plotter is a Streamlit web app for visualizing and editing train timetables from Excel files. It uses two custom Streamlit components built with React/TypeScript (Vite): an AG Grid table and an ECharts time-vs-km plot. The UI and comments are largely in Polish.
+Train Timetable Plotter is a web app for visualizing and editing train timetables from Excel files. It uses a **React SPA** frontend (TypeScript, Vite, AG Grid, ECharts) with a **FastAPI** backend. It supports JSON project save/load for preserving work across sessions. The UI and comments are largely in Polish.
 
 ## Commands
 
-### Run the app
+### Run the app (development)
 ```bash
-streamlit run app.py
-```
-App runs on http://localhost:8501.
+# Terminal 1: FastAPI backend
+uvicorn backend.main:app --port 7860 --reload
 
-### Install Python dependencies
+# Terminal 2: Vite dev server (proxies /api to :7860)
+cd frontend && npm run dev
+```
+App runs on http://localhost:5173 (Vite dev) or http://localhost:7860 (production).
+
+### Run the app (production)
+```bash
+cd frontend && npm run build
+uvicorn backend.main:app --port 7860
+```
+
+### Install dependencies
 ```bash
 pip install -r requirements.txt
+cd frontend && npm install
 ```
 
-### Build frontend components (required after frontend changes)
+### Build frontend (required for production)
 ```bash
-cd train_grid_component/frontend && npm install && npm run build && cd ../..
-cd train_plot_component/frontend && npm install && npm run build && cd ../..
+cd frontend && npm run build
 ```
 
-### Frontend dev mode (hot reload)
-Run the Vite dev servers alongside Streamlit:
+### Docker
 ```bash
-# Terminal 1: Grid component dev server (port 5173)
-cd train_grid_component/frontend && npm run dev
-
-# Terminal 2: Plot component dev server (port 5174)
-cd train_plot_component/frontend && npm run dev
-
-# Terminal 3: Streamlit with dev flags
-TRAIN_GRID_DEV=1 TRAIN_PLOT_DEV=1 streamlit run app.py
+docker build -t train-timetable-plotter .
+docker run -p 7860:7860 train-timetable-plotter
 ```
-When `TRAIN_GRID_DEV=1` or `TRAIN_PLOT_DEV=1` is set, the Python backend connects to localhost Vite servers instead of loading from the committed `dist/` folders.
 
 ## Architecture
 
 ### Data Flow
 ```
-Excel upload → read_workbook() (expand merged cells) → extract_excel_data()
-  → parse headers, stations, trains → store in st.session_state
-  → render plot (train_plot_component) + grid (train_grid_component)
-  → user clicks cell/point → color mode: assign color | normal mode: modal dialog
-  → save_cell_time() → optional propagate_time_shift()
-  → update session_state → st.rerun()
-  → export to XLSX
+File upload (.xlsx or .json project)
+  → POST /api/upload → parse Excel or restore JSON → store in SessionState
+  → GET /api/trains → build grid rows + plot series → JSON response
+  → React renders TrainPlot (ECharts) + TrainGrid (AG Grid)
+  → user dblclick → EditDialog → POST /api/edit/save → refetch trains → re-render
+  → user click (color mode) → PUT /api/colors → update store → re-render
+  → GET /api/export/xlsx|circuits|project → download file
 ```
 
-### Python Modules
-- **app.py** — Main Streamlit entry point. Handles file upload, sheet selection, rendering both components, edit dialogs, color tool, and XLSX export. All UI state lives in `st.session_state`.
-- **excel_loader.py** — Reads Excel workbooks via openpyxl, expands merged cells, detects headers, extracts station maps and train data per sheet, validates cross-sheet consistency.
-- **table_editor.py** — Time editing operations: `save_cell_time()`, `clear_cell_time()`, `propagate_time_shift()` (cascades a time delta to downstream stations by km).
-- **utils.py** — Parsing utilities: `parse_time()` (handles HH:MM, HH.MM, Excel fractions, day suffixes like `(+1)`), `format_time_decimal()`, `format_time_hhmm()`, `parse_km()`, `apply_midnight_correction()`, `normalize()` (Polish-aware text normalization with accent stripping), header detection (`find_headers()`, `extract_stations()`, `extract_train_columns()`).
+### Backend (`backend/`)
+- **main.py** — FastAPI app factory, CORS, static file serving, API routers
+- **config.py** — Port, static path constants
+- **deps.py** — `get_state()` dependency injection
+- **models/session.py** — `SessionState` dataclass with dict-like interface (so `table_editor.py` and `excel_loader.py` work unchanged)
+- **models/requests.py** — Pydantic request bodies
+- **models/responses.py** — Pydantic response models
+- **routers/upload.py** — `POST /api/upload` (Excel + JSON)
+- **routers/sheets.py** — `GET /api/sheets`, `PUT /api/sheets/select`
+- **routers/trains.py** — `GET /api/trains` (grid rows + plot series + station items + axis bounds)
+- **routers/edit.py** — `POST /api/edit/save`, `POST /api/edit/clear`
+- **routers/colors.py** — `PUT /api/colors`, `DELETE /api/colors/all`
+- **routers/export.py** — `GET /api/export/xlsx|circuits|project`
+- **services/session_store.py** — In-memory singleton session store
+- **services/excel_service.py** — Adapter: `excel_loader` → `SessionState`
+- **services/export_service.py** — XLSX timetable, vehicle circuits, project JSON builders
+- **services/plot_data.py** — Grid rows + plot series construction
 
-### Custom Streamlit Components
-Each component follows the same pattern: a Python backend in `backend/` that declares the component and a React/TypeScript frontend in `frontend/` built with Vite.
+### Shared Python Modules (unchanged from original)
+- **utils.py** — `parse_time()`, `format_time_decimal()`, `format_time_hhmm()`, `parse_km()`, `apply_midnight_correction()`, `normalize()`, header detection
+- **table_editor.py** — `save_cell_time()`, `clear_cell_time()`, `propagate_time_shift()`
+- **excel_loader.py** — `read_workbook()`, `extract_excel_data()`, `read_and_store_in_session()`
 
-- **train_grid_component** — AG Grid wrapper. Sends `cellDoubleClick` (edit mode), `cellClick` (color mode), and `cellValueChanged` (inline edit) events back to Streamlit. Port 5173 in dev mode.
-- **train_plot_component** — ECharts line chart (time x-axis, km y-axis). Sends `pointDoubleClick` (edit mode) and `pointClick` (color mode) events back to Streamlit. Port 5174 in dev mode.
-
-Both components' `dist/` folders are committed to the repo so the app can deploy on Streamlit Cloud without Node.js.
+### Frontend (`frontend/`)
+- **src/main.tsx** — React entry point
+- **src/App.tsx** — App shell: layout, file upload, sheet selector, all interactions
+- **src/api.ts** — Fetch wrapper for all API calls
+- **src/store.ts** — Zustand store (sheets, trainColors, selectedSheet, activeColor, etc.)
+- **src/types.ts** — TypeScript interfaces matching API responses
+- **src/components/TrainPlot.tsx** — ECharts time-vs-km chart (adapted from Streamlit component)
+- **src/components/TrainGrid.tsx** — AG Grid timetable (adapted from Streamlit component)
+- **src/components/EditDialog.tsx** — Modal for editing time, propagation checkbox
+- **src/components/ColorToolbar.tsx** — Color palette buttons
+- **src/components/FileUpload.tsx** — Drag & drop file upload
+- **src/components/SheetSelector.tsx** — Sheet tab buttons
+- **src/components/ExportBar.tsx** — Download buttons
+- **src/styles/theme.css** — Warm cream theme
 
 ### Session State Keys
 - `sheets_data` — List of `{sheet, trains}` where each train record has `train_number`, `station`, `km`, `time` (formatted string), `time_decimal` (float hours), optional `stop_type` ("p"/"o" for dual stations).
 - `station_map` / `station_maps` — Station-to-km mapping (reference from first sheet, plus per-sheet maps).
-- `plot_nonce_*` / `grid_nonce_*` — Incremented to force component re-render after edits.
 - `train_colors` — Dict mapping train number (str) to hex color (str). Used by both components for line/column coloring.
-- `active_color` — Currently selected color hex in color tool mode, or `None` when color tool is inactive.
 - `uploaded_hash` — SHA256 hash of uploaded file bytes (prevents re-parsing same file).
 - `uploaded_name` — Original filename of uploaded Excel (used for export naming).
 - `selected_sheet` — Currently selected sheet name.
-- `station_check` — Cross-sheet station consistency check result `{ok: bool, mismatches: list}`.
 
 ### Time Handling
 Times are stored as decimal hours (float). Midnight crossing is detected when time difference exceeds 12h. Day offset is tracked via `(+N)` suffix in formatted strings. The parser (`parse_time`) accepts HH:MM, HH:MM:SS, HH.MM, Excel day fractions, and datetime objects.
 
-### Header Detection
-Excel headers are matched using normalized Polish variants (e.g., "numer pociagu", "nr pociagu", "ze stacji", "do stacji", "km"). Normalization strips accents, lowercases, and collapses whitespace.
+### JSON Project Format
+Projects are saved as JSON with `_format: "train-timetable-plotter-project"` and `_version: 1`. Contains: `sheets_data`, `station_map`, `station_maps`, `train_colors`, `uploaded_name`, `selected_sheet`. Loading validates the `_format` field and restores all session state keys directly.
+
+### API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/upload` | Upload .xlsx/.json |
+| GET | `/api/sheets` | List sheets |
+| PUT | `/api/sheets/select` | Select sheet |
+| GET | `/api/trains` | Grid rows + plot series |
+| POST | `/api/edit/save` | Save time (+ optional propagation) |
+| POST | `/api/edit/clear` | Clear stop |
+| PUT | `/api/colors` | Set train color |
+| DELETE | `/api/colors/all` | Reset all colors |
+| GET | `/api/export/xlsx` | Download timetable XLSX |
+| GET | `/api/export/circuits` | Download vehicle circuits XLSX |
+| GET | `/api/export/project` | Download project JSON |
+| GET | `/api/example` | Download example file |
