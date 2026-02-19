@@ -44,13 +44,11 @@ export default function TrainGrid({
       const field = col.field || "";
       if (SYSTEM_FIELDS.has(field)) return col;
       const color = trainColors[field];
-      if (color && color !== "#000000") {
-        return {
-          ...col,
-          cellStyle: { backgroundColor: hexToRgba(color, 0.15) },
-        };
-      }
-      return col;
+      const cellStyle =
+        color && color !== "#000000"
+          ? { backgroundColor: hexToRgba(color, 0.15) }
+          : undefined;
+      return { ...col, cellStyle };
     });
   }, [columnDefs, trainColors]);
 
