@@ -1,6 +1,7 @@
 import json
 import datetime as dt
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -16,6 +17,13 @@ from backend.services.export_service import (
 router = APIRouter(prefix="/api/export", tags=["export"])
 
 
+def _content_disposition(filename: str) -> str:
+    """Build Content-Disposition header safe for non-ASCII filenames (RFC 5987)."""
+    ascii_name = filename.encode("ascii", errors="replace").decode("ascii")
+    utf8_name = quote(filename)
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
+
+
 @router.get("/xlsx")
 async def export_xlsx(session: SessionState = Depends(get_state)) -> StreamingResponse:
     data = build_excel_bytes(session)
@@ -23,7 +31,7 @@ async def export_xlsx(session: SessionState = Depends(get_state)) -> StreamingRe
     return StreamingResponse(
         BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": _content_disposition(name)},
     )
 
 
@@ -35,7 +43,7 @@ async def export_circuits(session: SessionState = Depends(get_state)) -> Streami
     return StreamingResponse(
         BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{base}_obiegi_{ts}.xlsx"'},
+        headers={"Content-Disposition": _content_disposition(f"{base}_obiegi_{ts}.xlsx")},
     )
 
 
@@ -47,5 +55,5 @@ async def export_project(session: SessionState = Depends(get_state)) -> Streamin
     return StreamingResponse(
         BytesIO(data),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{base}_{ts}.json"'},
+        headers={"Content-Disposition": _content_disposition(f"{base}_{ts}.json")},
     )
