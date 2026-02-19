@@ -8,6 +8,7 @@ import TrainGrid from "./components/TrainGrid";
 import ColorToolbar from "./components/ColorToolbar";
 import EditDialog from "./components/EditDialog";
 import ExportBar from "./components/ExportBar";
+import XlsxRequirements from "./components/XlsxRequirements";
 import "./styles/theme.css";
 
 interface EditInfo {
@@ -251,6 +252,8 @@ export default function App() {
       <h1>Rozkład Jazdy - wykresy z tabeli</h1>
 
       <FileUpload onUpload={handleUpload} loading={loading} />
+
+      <XlsxRequirements />
 
       {error && <div className="error-msg">{error}</div>}
 
