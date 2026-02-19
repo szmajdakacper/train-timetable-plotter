@@ -7,9 +7,23 @@ from backend.models.session import SessionState
 from backend.models.requests import SaveTimeRequest, ClearTimeRequest
 from backend.services.plot_data import build_trains_payload
 from table_editor import save_cell_time, clear_cell_time, propagate_time_shift
-from utils import parse_time
 
 router = APIRouter(prefix="/api/edit", tags=["edit"])
+
+
+def _canonical_km(session: SessionState, sheet: str, station: str, fallback_km: float) -> float:
+    """Look up the canonical km for a station from its own sheet's station map.
+
+    The plot may display a train from sheet A using sheet B's km values.
+    propagate_time_shift and save_cell_time need the km from the train's
+    own sheet so comparisons against record km values work correctly.
+    """
+    station_maps = session.get("station_maps", {})
+    sheet_map = station_maps.get(sheet, {})
+    km = sheet_map.get(station)
+    if km is not None:
+        return float(km)
+    return fallback_km
 
 
 @router.post("/save")
@@ -18,6 +32,9 @@ async def save_time(
     session: SessionState = Depends(get_state),
 ) -> dict:
     time_value = dt.time(body.hour, body.minute, body.second)
+
+    # Resolve km from the train's own sheet (plot may send active-sheet km)
+    km = _canonical_km(session, body.sheet, body.station, body.km)
 
     if body.propagate:
         # Compute delta from existing time
@@ -28,7 +45,7 @@ async def save_time(
             for rec in active.get("trains", []):
                 if (str(rec.get("train_number")) == body.train_number
                         and rec.get("station") == body.station
-                        and abs(float(rec.get("km", 0)) - body.km) < 0.01
+                        and abs(float(rec.get("km", 0)) - km) < 0.01
                         and rec.get("stop_type") == body.stop_type):
                     old_decimal = rec.get("time_decimal")
                     break
@@ -42,10 +59,10 @@ async def save_time(
             elif delta_hours < -12:
                 delta_hours += 24
             if delta_hours != 0.0:
-                propagate_time_shift(body.sheet, body.train_number, body.km, delta_hours, session)
+                propagate_time_shift(body.sheet, body.train_number, km, delta_hours, session)
 
     save_cell_time(
-        body.sheet, body.station, body.km, body.train_number,
+        body.sheet, body.station, km, body.train_number,
         time_value, session,
         day_offset=body.day_offset, stop_type=body.stop_type,
     )
@@ -57,8 +74,9 @@ async def clear_time(
     body: ClearTimeRequest,
     session: SessionState = Depends(get_state),
 ) -> dict:
+    km = _canonical_km(session, body.sheet, body.station, body.km)
     clear_cell_time(
-        body.sheet, body.station, body.km, body.train_number,
+        body.sheet, body.station, km, body.train_number,
         session, stop_type=body.stop_type,
     )
     return build_trains_payload(session)
