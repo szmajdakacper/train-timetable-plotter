@@ -15,7 +15,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-const SYSTEM_FIELDS = new Set(["km", "stacja", "_station_raw", "_stop_type"]);
+const SYSTEM_FIELDS = new Set(["km", "stacja", "_station_raw", "_stop_type", "_decimals"]);
 
 interface Props {
   rowData: Record<string, any>[];

@@ -35,6 +35,7 @@ interface Props {
     km: number;
     station: string;
     sheet: string;
+    stopType: string | null;
   }) => void;
 }
 
@@ -230,7 +231,8 @@ export default function TrainPlot({
           }
           station = best.name;
         }
-        onPointDoubleClick?.({ train, ms, km, station, sheet });
+        const stopType = raw?.stopType ?? null;
+        onPointDoubleClick?.({ train, ms, km, station, sheet, stopType });
       };
     }
     return events;

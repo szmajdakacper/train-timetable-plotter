@@ -34,7 +34,7 @@ def build_trains_payload(session: Any) -> dict[str, Any]:
     # Unique train numbers from active sheet
     unique_trains: list[str] = list(dict.fromkeys(str(t["train_number"]) for t in trains_active))
 
-    # Build cell_map: {(station, km): {train_number: {"p": val, "o": val}}}
+    # Build cell_map: {(station, km): {train_number: {"p": (display, decimal), ...}}}
     cell_map: dict[tuple, dict] = {}
     for rec in trains_active:
         key = (rec["station"], float(rec["km"]))
@@ -45,7 +45,7 @@ def build_trains_payload(session: Any) -> dict[str, Any]:
         else:
             display_val = str(rec.get("time") or "")
         stop_type = rec.get("stop_type", "p")
-        bucket.setdefault(str(rec["train_number"]), {})[stop_type] = display_val
+        bucket.setdefault(str(rec["train_number"]), {})[stop_type] = (display_val, tdec)
 
     dual_stations: set[tuple] = set()
     for key, times_dict in cell_map.items():
@@ -58,20 +58,29 @@ def build_trains_payload(session: Any) -> dict[str, Any]:
         times = cell_map.get((station, float(km)), {})
         if (station, float(km)) in dual_stations:
             row_p: dict[str, Any] = {"km": f"{km:.3f}", "stacja": f"{station} (p)",
-                                     "_station_raw": station, "_stop_type": "p"}
+                                     "_station_raw": station, "_stop_type": "p", "_decimals": {}}
             for tn in unique_trains:
-                row_p[tn] = times.get(tn, {}).get("p", "")
+                cell = times.get(tn, {}).get("p")
+                row_p[tn] = cell[0] if cell else ""
+                if cell and cell[1] is not None:
+                    row_p["_decimals"][tn] = cell[1]
             grid_rows.append(row_p)
             row_o: dict[str, Any] = {"km": f"{km:.3f}", "stacja": f"{station} (o)",
-                                     "_station_raw": station, "_stop_type": "o"}
+                                     "_station_raw": station, "_stop_type": "o", "_decimals": {}}
             for tn in unique_trains:
-                row_o[tn] = times.get(tn, {}).get("o", "")
+                cell = times.get(tn, {}).get("o")
+                row_o[tn] = cell[0] if cell else ""
+                if cell and cell[1] is not None:
+                    row_o["_decimals"][tn] = cell[1]
             grid_rows.append(row_o)
         else:
             row: dict[str, Any] = {"km": f"{km:.3f}", "stacja": station,
-                                   "_station_raw": station, "_stop_type": None}
+                                   "_station_raw": station, "_stop_type": None, "_decimals": {}}
             for tn in unique_trains:
-                row[tn] = times.get(tn, {}).get("p", "")
+                cell = times.get(tn, {}).get("p")
+                row[tn] = cell[0] if cell else ""
+                if cell and cell[1] is not None:
+                    row["_decimals"][tn] = cell[1]
             grid_rows.append(row)
 
     # Column defs
@@ -126,7 +135,10 @@ def _build_plot_series(
         for rec in trains:
             sn = rec["station"]
             tn = str(rec["train_number"])
-            station_to_train.setdefault(sn, {}).setdefault(tn, []).append(rec.get("time_decimal"))
+            station_to_train.setdefault(sn, {}).setdefault(tn, []).append({
+                "time_decimal": rec.get("time_decimal"),
+                "stop_type": rec.get("stop_type"),
+            })
         sheet_to_station_train[sheet] = station_to_train
         sheet_to_trains[sheet] = sorted({str(t["train_number"]) for t in trains})
 
@@ -141,7 +153,8 @@ def _build_plot_series(
                 times_list = station_to_train.get(station_name, {}).get(tn)
                 if not times_list:
                     continue
-                for t_dec in times_list:
+                for info in times_list:
+                    t_dec = info["time_decimal"]
                     if t_dec is None:
                         continue
                     ms = _hours_to_ms(t_dec)
@@ -150,6 +163,7 @@ def _build_plot_series(
                         "station": station_name,
                         "train": tn,
                         "sheet": sheet,
+                        "stopType": info["stop_type"],
                     })
                     global_min_ms = ms if global_min_ms is None else min(global_min_ms, ms)
                     global_max_ms = ms if global_max_ms is None else max(global_max_ms, ms)

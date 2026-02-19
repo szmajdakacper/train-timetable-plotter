@@ -8,6 +8,7 @@ export interface PlotPoint {
   station: string;
   train: string;
   sheet: string;
+  stopType: string | null;
 }
 
 export interface PlotSeries {
@@ -27,7 +28,8 @@ export interface GridRow {
   stacja: string;
   _station_raw: string;
   _stop_type: string | null;
-  [trainNumber: string]: string | null;
+  _decimals: Record<string, number>;
+  [trainNumber: string]: any;
 }
 
 export interface TrainsData {

@@ -125,29 +125,12 @@ export default function App() {
   );
 
   const handlePointDoubleClick = useCallback(
-    (info: { train: string; ms: number; km: number; station: string; sheet: string }) => {
+    (info: { train: string; ms: number; km: number; station: string; sheet: string; stopType?: string | null }) => {
       if (activeColor !== null) return;
       const totalHours = info.ms / 3_600_000;
       const h = Math.floor(totalHours) % 24;
       const m = Math.floor((totalHours % 1) * 60);
       const dayOffset = Math.floor(totalHours / 24);
-
-      // Try to find stop_type from grid data
-      let stopType: string | null = null;
-      if (trainsData) {
-        for (const row of trainsData.grid_rows) {
-          if (
-            row._station_raw === info.station &&
-            Math.abs(parseFloat(row.km) - info.km) < 0.01
-          ) {
-            const timeVal = row[info.train];
-            if (timeVal) {
-              stopType = row._stop_type;
-              break;
-            }
-          }
-        }
-      }
 
       setEditInfo({
         station: info.station,
@@ -156,12 +139,12 @@ export default function App() {
         sheet: info.sheet || selectedSheet,
         defaultHour: h,
         defaultMinute: m,
-        stopType,
+        stopType: info.stopType ?? null,
         hasExistingTime: true,
         dayOffset,
       });
     },
-    [activeColor, selectedSheet, trainsData],
+    [activeColor, selectedSheet],
   );
 
   const handleCellDoubleClick = useCallback(
@@ -176,7 +159,16 @@ export default function App() {
         m = 0,
         hasExisting = false,
         dayOffset = 0;
-      if (currentTimeStr) {
+
+      // Use raw decimal if available (preserves day offset for midnight-crossing times)
+      const decimals = info.row._decimals || {};
+      const rawDecimal: number | undefined = decimals[info.field];
+      if (rawDecimal !== undefined) {
+        h = Math.floor(rawDecimal) % 24;
+        m = Math.floor((rawDecimal % 1) * 60);
+        dayOffset = Math.floor(rawDecimal / 24);
+        hasExisting = true;
+      } else if (currentTimeStr) {
         const parts = currentTimeStr.split(":");
         h = parseInt(parts[0]) || 0;
         m = parseInt(parts[1]) || 0;
