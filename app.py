@@ -768,9 +768,6 @@ if station_map and sheets_data:
             if st.button("Wyczyść kolory", key="color_btn_clear", use_container_width=True):
                 st.session_state["train_colors"] = {}
                 st.session_state["active_color"] = None
-                for _nk in list(st.session_state.keys()):
-                    if _nk.startswith("plot_nonce_") or _nk.startswith("grid_nonce_"):
-                        st.session_state[_nk] += 1
                 st.rerun()
         # Przycisk instrukcji
         with _cc[len(_COLOR_PALETTE) + 2]:
@@ -985,20 +982,16 @@ if station_map and sheets_data:
     x_min = max(0, (global_min_ms or 0) - pad_left)
     x_max = (global_max_ms or (24 * 3600 * 1000)) + pad_right
 
-    # Nonce do resetu komponentu wykresu i siatki po akcji w modalu
-    plot_nonce_key = f"plot_nonce_{selected_sheet}"
-    if plot_nonce_key not in st.session_state:
-        st.session_state[plot_nonce_key] = 0
-    grid_nonce_key = f"grid_nonce_{selected_sheet}"
-    if grid_nonce_key not in st.session_state:
-        st.session_state[grid_nonce_key] = 0
+    # Klucze do śledzenia skonsumowanych eventów (zamiast nonce)
+    _plot_consumed_key = f"_plot_consumed_{selected_sheet}"
+    _grid_consumed_key = f"_grid_consumed_{selected_sheet}"
 
     evt_plot = train_plot(
         y_stations=y_stations,
         series=series,
         x_min_ms=x_min,
         x_max_ms=x_max,
-        key=f"plot_{selected_sheet}_{st.session_state[plot_nonce_key]}",
+        key=f"plot_{selected_sheet}",
         height=int(plot_height or 600),
         train_colors=_train_colors,
         color_mode=(_active_color is not None),
@@ -1006,7 +999,9 @@ if station_map and sheets_data:
 
 
     # Obsługa single-click z wykresu (tryb koloru)
-    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointClick" and _active_color is not None:
+    if (evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointClick"
+            and _active_color is not None
+            and evt_plot.get("_ts") != st.session_state.get(_plot_consumed_key)):
         _click_train = str(evt_plot.get("train") or "")
         if _click_train:
             if _active_color == "#000000":
@@ -1014,12 +1009,14 @@ if station_map and sheets_data:
             else:
                 _train_colors[_click_train] = _active_color
             st.session_state["train_colors"] = _train_colors
-            st.session_state[plot_nonce_key] += 1
-            st.session_state[grid_nonce_key] += 1
+            st.session_state[_plot_consumed_key] = evt_plot.get("_ts")
             st.rerun()
 
     # Obsługa dblclick z wykresu (edycja czasu w dowolnym arkuszu)
-    if evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointDoubleClick" and not _active_color:
+    if (evt_plot and isinstance(evt_plot, dict) and evt_plot.get("type") == "pointDoubleClick"
+            and not _active_color
+            and evt_plot.get("_ts") != st.session_state.get(_plot_consumed_key)):
+        _evt_plot_ts = evt_plot.get("_ts")
         try:
             col_id = str(evt_plot.get("train") or "")
             station_clicked = str(evt_plot.get("station") or "")
@@ -1087,19 +1084,16 @@ if station_map and sheets_data:
                         if prop and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"dlg_clear_plot_{sheet_clicked}"):
                         clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state, stop_type=_stop_type_plot)
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
                 with c3:
                     if st.button("Anuluj", key=f"dlg_cancel_plot_{sheet_clicked}"):
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
 
             time_dialog_plot()
@@ -1129,19 +1123,16 @@ if station_map and sheets_data:
                         if prop_fb and delta_hours != 0.0:
                             propagate_time_shift(sheet_clicked, col_id, float(km_sheet_clicked), float(delta_hours), st.session_state)
                         save_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, t, st.session_state, day_offset=_day_offset_plot, stop_type=_stop_type_plot)
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
                 with c2:
                     if st.button("Usuń postój", key=f"fallback_clear_plot_{sheet_clicked}"):
                         clear_cell_time(sheet_clicked, station_clicked, float(km_sheet_clicked), col_id, st.session_state, stop_type=_stop_type_plot)
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
                 with c3:
                     if st.button("Anuluj", key=f"fallback_cancel_plot_{sheet_clicked}"):
-                        st.session_state[plot_nonce_key] += 1
-                        st.session_state[grid_nonce_key] += 1
+                        st.session_state[_plot_consumed_key] = _evt_plot_ts
                         st.rerun()
 
     st.subheader("Tabela: km – stacja – pociągi")
@@ -1163,7 +1154,7 @@ if station_map and sheets_data:
     evt = train_grid(
         row_data=row_data,
         column_defs=column_defs,
-        key=f"grid_{selected_sheet}_{st.session_state[grid_nonce_key]}",
+        key=f"grid_{selected_sheet}",
         height=grid_height,
         theme="ag-theme-alpine",
         train_colors=_train_colors,
@@ -1171,7 +1162,9 @@ if station_map and sheets_data:
     )
 
     # Obsługa single-click z tabeli (tryb koloru)
-    if evt and isinstance(evt, dict) and evt.get("type") == "cellClick" and _active_color is not None:
+    if (evt and isinstance(evt, dict) and evt.get("type") == "cellClick"
+            and _active_color is not None
+            and evt.get("_ts") != st.session_state.get(_grid_consumed_key)):
         _click_field = str(evt.get("field") or "")
         if _click_field and _click_field not in ("km", "stacja", "_station_raw", "_stop_type"):
             if _active_color == "#000000":
@@ -1179,12 +1172,14 @@ if station_map and sheets_data:
             else:
                 _train_colors[_click_field] = _active_color
             st.session_state["train_colors"] = _train_colors
-            st.session_state[plot_nonce_key] += 1
-            st.session_state[grid_nonce_key] += 1
+            st.session_state[_grid_consumed_key] = evt.get("_ts")
             st.rerun()
 
     # Obsługa eventów z komponentu
-    if evt and isinstance(evt, dict) and evt.get("type") == "cellDoubleClick" and not _active_color:
+    if (evt and isinstance(evt, dict) and evt.get("type") == "cellDoubleClick"
+            and not _active_color
+            and evt.get("_ts") != st.session_state.get(_grid_consumed_key)):
+        _evt_grid_ts = evt.get("_ts")
         col_id = str(evt.get("field") or "")
         if col_id and col_id not in ("km", "stacja", "_station_raw", "_stop_type"):
             row = evt.get("row") or {}
@@ -1236,19 +1231,16 @@ if station_map and sheets_data:
                             if prop and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"dlg_clear_{selected_sheet}"):
                             clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state, stop_type=_stop_type_clicked)
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
                     with c3:
                         if st.button("Anuluj", key=f"dlg_cancel_{selected_sheet}"):
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
 
                 time_dialog()
@@ -1278,19 +1270,16 @@ if station_map and sheets_data:
                             if prop_fb and delta_hours != 0.0:
                                 propagate_time_shift(selected_sheet, col_id, float(km_clicked), float(delta_hours), st.session_state)
                             save_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, t, st.session_state, day_offset=_day_offset_grid, stop_type=_stop_type_clicked)
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
                     with c2:
                         if st.button("Usuń postój", key=f"fallback_clear_{selected_sheet}"):
                             clear_cell_time(selected_sheet, station_clicked, float(km_clicked), col_id, st.session_state, stop_type=_stop_type_clicked)
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
                     with c3:
                         if st.button("Anuluj", key=f"fallback_cancel_{selected_sheet}"):
-                            st.session_state[grid_nonce_key] += 1
-                            st.session_state[plot_nonce_key] += 1
+                            st.session_state[_grid_consumed_key] = _evt_grid_ts
                             st.rerun()
 else:
     st.info("Brak danych do zbudowania tabeli. Wczytaj plik.")
