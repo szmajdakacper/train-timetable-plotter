@@ -174,8 +174,17 @@ def _build_plot_series(
     return series, global_min_ms, global_max_ms
 
 
+def _stop_order(p: dict) -> int:
+    """Arrival ("p") before departure ("o") at the same km."""
+    return 0 if p.get("stopType") != "o" else 1
+
+
 def _sort_points_by_direction(pts: list[dict]) -> list[dict]:
-    """Sort points by km in the detected travel direction."""
+    """Sort points by km in the detected travel direction.
+
+    At the same km (dual station), arrival always comes before departure
+    so the line visually shows p→o regardless of actual times.
+    """
     pts.sort(key=lambda p: p["value"][1])
     asc_votes = 0
     desc_votes = 0
@@ -187,9 +196,9 @@ def _sort_points_by_direction(pts: list[dict]) -> list[dict]:
         elif pts[i]["value"][0] < pts[i - 1]["value"][0]:
             desc_votes += 1
     if desc_votes > asc_votes:
-        pts.sort(key=lambda p: (-p["value"][1], p["value"][0]))
+        pts.sort(key=lambda p: (-p["value"][1], _stop_order(p)))
     else:
-        pts.sort(key=lambda p: (p["value"][1], p["value"][0]))
+        pts.sort(key=lambda p: (p["value"][1], _stop_order(p)))
     return pts
 
 
